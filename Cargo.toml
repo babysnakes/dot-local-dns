@@ -1,0 +1,10 @@
+[package]
+name = "dot-local-dns"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1", features = ["rt", "fs", "net"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59.0", features = ["Win32_Networking_WinSock", "Win32_System_IO"] }
