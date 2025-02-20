@@ -1,3 +1,6 @@
+use crate::dns::DnsServer;
+
+mod constants;
 mod dns;
 
 fn main() {
@@ -5,6 +8,9 @@ fn main() {
         .enable_all()
         .build()
         .unwrap()
-        .block_on(dns::dns_server(53));
+        .block_on(async {
+            let dns_server = DnsServer::new(53).await?;
+            dns_server.run().await
+        });
     let _ = dbg!(result);
 }

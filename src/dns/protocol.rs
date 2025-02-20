@@ -1,9 +1,9 @@
+#![allow(clippy::upper_case_acronyms)]
+
+use anyhow::{anyhow, Result};
 use std::net::{Ipv4Addr, Ipv6Addr};
 
 // use log::warn;
-
-pub type Error = Box<dyn std::error::Error>;
-pub type Result<T> = std::result::Result<T, Error>;
 
 pub struct BytePacketBuffer {
     pub buf: [u8; 512],
@@ -36,7 +36,7 @@ impl BytePacketBuffer {
 
     fn read(&mut self) -> Result<u8> {
         if self.pos >= 512 {
-            return Err("End of buffer".into());
+            return Err(anyhow!("End of buffer"));
         }
         let res = self.buf[self.pos];
         self.pos += 1;
@@ -46,14 +46,14 @@ impl BytePacketBuffer {
 
     fn get(&mut self, pos: usize) -> Result<u8> {
         if pos >= 512 {
-            return Err("End of buffer".into());
+            return Err(anyhow!("End of buffer"));
         }
         Ok(self.buf[pos])
     }
 
     pub(super) fn get_range(&mut self, start: usize, len: usize) -> Result<&[u8]> {
         if start + len >= 512 {
-            return Err("End of buffer".into());
+            return Err(anyhow!("End of buffer"));
         }
         Ok(&self.buf[start..start + len])
     }
@@ -85,13 +85,13 @@ impl BytePacketBuffer {
             // can craft a packet with a cycle in the jump instructions. This guards
             // against such packets.
             if jumps_performed > max_jumps {
-                return Err(format!("Limit of {} jumps exceeded", max_jumps).into());
+                return Err(anyhow::anyhow!("Limit of {} jumps exceeded", max_jumps));
             }
 
             let len = self.get(pos)?;
 
             // A two byte sequence, where the two highest bits of the first byte is
-            // set, represents a offset relative to the start of the buffer. We
+            // set, represents an offset relative to the start of the buffer. We
             // handle this by jumping to the offset, setting a flag to indicate
             // that we shouldn't update the shared buffer position once done.
             if (len & 0xC0) == 0xC0 {
@@ -135,7 +135,7 @@ impl BytePacketBuffer {
 
     fn write(&mut self, val: u8) -> Result<()> {
         if self.pos >= 512 {
-            return Err("End of buffer".into());
+            return Err(anyhow!("End of buffer"));
         }
         self.buf[self.pos] = val;
         self.pos += 1;
@@ -170,7 +170,7 @@ impl BytePacketBuffer {
         for label in split_str {
             let len = label.len();
             if len > 0x3f {
-                return Err("Single label exceeds 63 characters of length".into());
+                return Err(anyhow!("Single label exceeds 63 characters of length"));
             }
 
             self.write_u8(len as u8)?;
@@ -700,7 +700,7 @@ impl DnsPacket {
 
     pub async fn from_buffer(buffer: &mut BytePacketBuffer) -> Result<DnsPacket> {
         let mut result = DnsPacket::new();
-       result.header.read(buffer)?;
+        result.header.read(buffer)?;
 
         for _ in 0..result.header.questions {
             let mut question = DnsQuestion::new("".to_string(), QueryType::UNKNOWN(0));
