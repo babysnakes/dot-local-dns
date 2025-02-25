@@ -3,42 +3,102 @@ mod protocol;
 
 use super::constants::*;
 use crate::dns::config::DotLocalDNSConfig;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use protocol::*;
 use std::collections::HashMap;
 use std::net::{Ipv4Addr, SocketAddr};
 use tokio::net::UdpSocket;
+use tokio::select;
+use tokio::sync::mpsc::{self, Receiver, Sender};
+use tokio::sync::oneshot;
 use windows_sys::Win32::Foundation::{BOOL, FALSE};
 
 pub struct DnsServer {
+    pub notify_tx: Sender<Notification>,
+    pub lookup_tx: Sender<LookupChannel>,
     port: u16,
     records: HashMap<String, Ipv4Addr>,
+    notify_rx: Receiver<Notification>,
+    lookup_rx: Receiver<LookupChannel>,
+}
+
+#[derive(Debug)]
+pub enum LookupChannel {
+    ARecordQuery(String, oneshot::Sender<Result<Ipv4Addr>>),
+}
+
+#[derive(Debug)]
+pub enum Notification {
+    Shutdown,
+    Reload,
 }
 
 impl DnsServer {
     pub async fn new(port: u16) -> Result<Self> {
         let config = DotLocalDNSConfig::new().await?;
+        let (notify_tx, notify_rx) = mpsc::channel::<Notification>(1);
+        let (lookup_tx, lookup_rx) = mpsc::channel::<LookupChannel>(4);
         Ok(Self {
+            notify_tx,
+            lookup_tx,
             port,
             records: config.records,
+            notify_rx,
+            lookup_rx,
         })
     }
 
-    pub async fn run(&self) -> Result<()> {
+    pub async fn run(&mut self) -> Result<()> {
         let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, self.port));
         let socket = mk_udp_socket(&addr).await?;
         println!("Listening on: localhost:{}", self.port);
         loop {
             let mut req_buffer = BytePacketBuffer::new();
-            let (_len, peer) = socket.recv_from(&mut req_buffer.buf).await?;
-            let request = DnsPacket::from_buffer(&mut req_buffer).await?;
-            let mut response = lookup(&request, &self.records)?;
-            let mut res_buffer = BytePacketBuffer::new();
-            response.write(&mut res_buffer)?;
-            let pos = res_buffer.pos();
-            let data = res_buffer.get_range(0, pos)?;
-            let _ = socket.send_to(data, peer).await?;
+            select! {
+                biased;
+                notification = self.notify_rx.recv() => {
+                    println!("DNS server received notification: {notification:?}");
+                    if let Some(notification) = notification {
+                        match notification {
+                            Notification::Shutdown => {
+                                println!("DNS server received shutdown");
+                                return Ok(());
+                            },
+                            Notification::Reload => {
+                                println!("Reloading Configuration");
+                                self.reload_config().await?;
+                            }
+                        }
+                    }
+                }
+                message = self.lookup_rx.recv() => {
+                    println!("DNS server received lookup channel: {message:?}");
+                    if let Some(LookupChannel::ARecordQuery(host, tx)) = message {
+                        let res = lookup_name(host, &self.records);
+                        if tx.send(res).is_err() {
+                            println!("Error sending response to lookup channel");
+                        }
+                    }
+                }
+                received = socket.recv_from(&mut req_buffer.buf) => {
+                    let (_len, peer) = received?;
+                    let request = DnsPacket::from_buffer(&mut req_buffer).await?;
+                    let mut response = lookup(&request, &self.records)?;
+                    let mut res_buffer = BytePacketBuffer::new();
+                    response.write(&mut res_buffer)?;
+                    let pos = res_buffer.pos();
+                    let data = res_buffer.get_range(0, pos)?;
+                    let _ = socket.send_to(data, peer).await?;
+                }
+            }
         }
+    }
+
+    async fn reload_config(&mut self) -> Result<()> {
+        let config = DotLocalDNSConfig::new().await?;
+        self.records = config.records;
+        println!("Records reloaded");
+        Ok(())
     }
 }
 
@@ -98,6 +158,23 @@ fn lookup(request: &DnsPacket, domain: &HashMap<String, Ipv4Addr>) -> Result<Dns
     // debug!("response is: {:#?}", &response);
     // dbg!{&response};
     Ok(response)
+}
+
+fn lookup_name(host: String, domain: &HashMap<String, Ipv4Addr>) -> Result<Ipv4Addr> {
+    let mut query = DnsPacket::new();
+    let question = DnsQuestion::new(host, QueryType::A);
+    query.questions.push(question);
+    let response = lookup(&query, domain)?;
+    let result_code = ResultCode::from_num(response.header.opcode);
+    if response.answers.is_empty() {
+        return Err(anyhow!(
+            "DNS responded with no answers and code: {result_code:?}"
+        ));
+    }
+    match response.answers[0] {
+        DnsRecord::A { ref addr, .. } => Ok(*addr),
+        _ => Err(anyhow!("DNS responded with")),
+    }
 }
 
 fn ip_from_domain_or_default(host: &str, domain: &HashMap<String, Ipv4Addr>) -> Ipv4Addr {

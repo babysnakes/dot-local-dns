@@ -4,7 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-tokio = { version = "1", features = ["rt", "fs", "net", "macros"] }
+# optionally delete tokio features: io-std, io-util
+tokio = { version = "1", features = ["rt", "fs", "net", "macros", "sync", "rt-multi-thread", "io-std", "io-util"] }
 anyhow = "1.0"
 simple-home-dir = "0.4"
 
