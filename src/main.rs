@@ -39,7 +39,7 @@ async fn console_loop(
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let mut dns_server = DnsServer::new(53).await?;
+    let mut dns_server = DnsServer::new(53, None).await?;
     let lookup_tx = dns_server.lookup_tx.clone();
     let notify_tx = dns_server.notify_tx.clone();
     let (sout, dout) = join!(

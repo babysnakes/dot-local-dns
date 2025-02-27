@@ -1,12 +1,12 @@
-mod config;
 mod protocol;
+mod records;
 
 use super::constants::*;
-use crate::dns::config::DotLocalDNSConfig;
 use anyhow::{anyhow, Result};
 use protocol::*;
 use std::collections::HashMap;
 use std::net::{Ipv4Addr, SocketAddr};
+use std::path::PathBuf;
 use tokio::net::UdpSocket;
 use tokio::select;
 use tokio::sync::mpsc::{self, Receiver, Sender};
@@ -17,6 +17,7 @@ pub struct DnsServer {
     pub notify_tx: Sender<Notification>,
     pub lookup_tx: Sender<LookupChannel>,
     port: u16,
+    db_path: PathBuf,
     records: HashMap<String, Ipv4Addr>,
     notify_rx: Receiver<Notification>,
     lookup_rx: Receiver<LookupChannel>,
@@ -34,15 +35,17 @@ pub enum Notification {
 }
 
 impl DnsServer {
-    pub async fn new(port: u16) -> Result<Self> {
-        let config = DotLocalDNSConfig::new().await?;
+    pub async fn new(port: u16, db_path: Option<PathBuf>) -> Result<Self> {
+        let db_path = db_path.unwrap_or(records::default_db_path()?);
+        let records = records::try_from_file(&db_path).await?;
         let (notify_tx, notify_rx) = mpsc::channel::<Notification>(1);
         let (lookup_tx, lookup_rx) = mpsc::channel::<LookupChannel>(4);
         Ok(Self {
             notify_tx,
             lookup_tx,
             port,
-            records: config.records,
+            db_path,
+            records,
             notify_rx,
             lookup_rx,
         })
@@ -72,33 +75,47 @@ impl DnsServer {
                     }
                 }
                 message = self.lookup_rx.recv() => {
-                    println!("DNS server received lookup channel: {message:?}");
-                    if let Some(LookupChannel::ARecordQuery(host, tx)) = message {
-                        let res = lookup_name(host, &self.records);
-                        if tx.send(res).is_err() {
-                            println!("Error sending response to lookup channel");
-                        }
-                    }
+                    self.handle_name_lookup(message).await;
                 }
                 received = socket.recv_from(&mut req_buffer.buf) => {
-                    let (_len, peer) = received?;
-                    let request = DnsPacket::from_buffer(&mut req_buffer).await?;
-                    let mut response = lookup(&request, &self.records)?;
-                    let mut res_buffer = BytePacketBuffer::new();
-                    response.write(&mut res_buffer)?;
-                    let pos = res_buffer.pos();
-                    let data = res_buffer.get_range(0, pos)?;
-                    let _ = socket.send_to(data, peer).await?;
+                    self.handle_request(received, &mut req_buffer, &socket).await?
                 }
             }
         }
     }
 
     async fn reload_config(&mut self) -> Result<()> {
-        let config = DotLocalDNSConfig::new().await?;
-        self.records = config.records;
+        let records = records::load_from_file(&self.db_path).await?;
+        self.records = records;
         println!("Records reloaded");
         Ok(())
+    }
+
+    async fn handle_request(
+        &mut self,
+        received: std::io::Result<(usize, SocketAddr)>,
+        req_buffer: &mut BytePacketBuffer,
+        socket: &UdpSocket,
+    ) -> Result<()> {
+        let (_len, peer) = received?;
+        let request = DnsPacket::from_buffer(req_buffer).await?;
+        let mut response = lookup(&request, &self.records)?;
+        let mut res_buffer = BytePacketBuffer::new();
+        response.write(&mut res_buffer)?;
+        let pos = res_buffer.pos();
+        let data = res_buffer.get_range(0, pos)?;
+        _ = socket.send_to(data, peer).await;
+        Ok(())
+    }
+
+    async fn handle_name_lookup(&self, message: Option<LookupChannel>) {
+        println!("DNS server received lookup channel: {message:?}");
+        if let Some(LookupChannel::ARecordQuery(host, tx)) = message {
+            let res = lookup_name(host, &self.records);
+            if tx.send(res).is_err() {
+                println!("Error sending response to lookup channel");
+            }
+        }
     }
 }
 
