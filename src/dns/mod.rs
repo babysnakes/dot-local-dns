@@ -1,3 +1,5 @@
+#![allow(clippy::wildcard_imports)]
+
 mod protocol;
 mod records;
 
@@ -75,10 +77,10 @@ impl DnsServer {
                     }
                 }
                 message = self.lookup_rx.recv() => {
-                    self.handle_name_lookup(message).await;
+                    self.handle_name_lookup(message);
                 }
                 received = socket.recv_from(&mut req_buffer.buf) => {
-                    self.handle_request(received, &mut req_buffer, &socket).await?
+                    self.handle_request(received, &mut req_buffer, &socket).await?;
                 }
             }
         }
@@ -91,6 +93,7 @@ impl DnsServer {
         Ok(())
     }
 
+    #[allow(clippy::similar_names)]
     async fn handle_request(
         &mut self,
         received: std::io::Result<(usize, SocketAddr)>,
@@ -99,7 +102,7 @@ impl DnsServer {
     ) -> Result<()> {
         let (_len, peer) = received?;
         let request = DnsPacket::from_buffer(req_buffer).await?;
-        let mut response = lookup(&request, &self.records)?;
+        let mut response = lookup(&request, &self.records);
         let mut res_buffer = BytePacketBuffer::new();
         response.write(&mut res_buffer)?;
         let pos = res_buffer.pos();
@@ -108,7 +111,7 @@ impl DnsServer {
         Ok(())
     }
 
-    async fn handle_name_lookup(&self, message: Option<LookupChannel>) {
+    fn handle_name_lookup(&self, message: Option<LookupChannel>) {
         println!("DNS server received lookup channel: {message:?}");
         if let Some(LookupChannel::ARecordQuery(host, tx)) = message {
             let res = lookup_name(host, &self.records);
@@ -119,7 +122,7 @@ impl DnsServer {
     }
 }
 
-fn lookup(request: &DnsPacket, domain: &HashMap<String, Ipv4Addr>) -> Result<DnsPacket> {
+fn lookup(request: &DnsPacket, domain: &HashMap<String, Ipv4Addr>) -> DnsPacket {
     // dbg!{request};
     let id = &request.header.id;
     // trace!("received query (id: {}): {:?}", &id, &request);
@@ -130,28 +133,28 @@ fn lookup(request: &DnsPacket, domain: &HashMap<String, Ipv4Addr>) -> Result<Dns
 
     if request.questions.is_empty() {
         response.header.rescode = ResultCode::NOTIMP;
-        return Ok(response);
+        return response;
     }
 
     let query = &request.questions[0];
     response.questions.push(query.clone());
 
-    if request.header.response {
-        // warn!("received response as question (id: {})", &id);
-        response.header.rescode = ResultCode::NOTIMP;
-        return Ok(response);
+        if request.header.response {
+            // warn!("received response as question (id: {})", &id);
+            response.header.rescode = ResultCode::NOTIMP;
+            return response;
     }
 
     if request.header.opcode != 0 {
         // warn!("received non-zero opcode (id: {})", &id);
         response.header.rescode = ResultCode::NOTIMP;
-        return Ok(response);
+        return response;
     }
 
     if !query.name.ends_with(TOP_LEVEL_DOMAIN) {
         // warn!("unsupported domain (id: {}): {}", &id, &query.name);
         response.header.rescode = ResultCode::SERVFAIL;
-        return Ok(response);
+        return response;
     }
 
     match &query.qtype {
@@ -173,23 +176,22 @@ fn lookup(request: &DnsPacket, domain: &HashMap<String, Ipv4Addr>) -> Result<Dns
         }
     }
     // debug!("response is: {:#?}", &response);
-    // dbg!{&response};
-    Ok(response)
+    response
 }
 
 fn lookup_name(host: String, domain: &HashMap<String, Ipv4Addr>) -> Result<Ipv4Addr> {
     let mut query = DnsPacket::new();
     let question = DnsQuestion::new(host, QueryType::A);
     query.questions.push(question);
-    let response = lookup(&query, domain)?;
+    let response = lookup(&query, domain);
     let result_code = ResultCode::from_num(response.header.opcode);
     if response.answers.is_empty() {
         return Err(anyhow!(
             "DNS responded with no answers and code: {result_code:?}"
         ));
     }
-    match response.answers[0] {
-        DnsRecord::A { ref addr, .. } => Ok(*addr),
+    match response.answers.first() {
+        Some(DnsRecord::A { ref addr, .. }) => Ok(*addr),
         _ => Err(anyhow!("DNS responded with")),
     }
 }
@@ -198,8 +200,7 @@ fn ip_from_domain_or_default(host: &str, domain: &HashMap<String, Ipv4Addr>) -> 
     domain
         .iter()
         .find(|&(name, _)| name == host || host.ends_with(&format!(".{name}")))
-        .map(|(_, ip)| *ip)
-        .unwrap_or(Ipv4Addr::LOCALHOST)
+        .map_or(Ipv4Addr::LOCALHOST, |(_, ip)| *ip)
 }
 
 #[cfg(not(windows))]
@@ -207,6 +208,7 @@ async fn mk_udp_socket(addr: SocketAddr) -> std::io::Result<UdpSocket> {
     UdpSocket::bind(addr).await
 }
 
+#[allow(clippy::cast_possible_truncation)]
 #[cfg(windows)]
 async fn mk_udp_socket(addr: &SocketAddr) -> std::io::Result<UdpSocket> {
     use std::io::Error;
@@ -222,7 +224,7 @@ async fn mk_udp_socket(addr: &SocketAddr) -> std::io::Result<UdpSocket> {
         WSAIoctl(
             handle,
             SIO_UDP_CONNRESET,
-            &mut enable as *mut _ as _,
+            std::ptr::from_mut(&mut enable) as _,
             size_of_val(&enable) as _,
             null_mut(),
             0,
@@ -238,6 +240,7 @@ async fn mk_udp_socket(addr: &SocketAddr) -> std::io::Result<UdpSocket> {
     Ok(socket)
 }
 
+#[allow(clippy::match_on_vec_items)]
 #[cfg(test)]
 mod tests {
     use super::protocol::*;
@@ -254,7 +257,7 @@ mod tests {
         ($name:ident, $query_packet:expr, $response_code:expr, $extra_tests:expr) => {
             #[test]
             fn $name() {
-                let response = lookup($query_packet, &records()).unwrap();
+                let response = lookup($query_packet, &records());
                 // a few common tests
                 assert_eq!($query_packet.header.id, response.header.id);
                 assert_eq!(response.header.rescode, $response_code);
@@ -426,10 +429,10 @@ mod tests {
             .await
             .unwrap();
         let notify_tx = dns.notify_tx.clone();
-        let (_, dns_out) = join!(
+        let ((), dns_out) = join!(
             async move {
                 sleep(Duration::from_millis(100)).await;
-                _ = notify_tx.send(Shutdown).await
+                _ = notify_tx.send(Shutdown).await;
             },
             dns.run(),
         );
@@ -443,10 +446,10 @@ mod tests {
                 .await
                 .unwrap();
             let notify_tx = dns.notify_tx.clone();
-            let (_, dns_out) = join!(
+            let ((), dns_out) = join!(
                 async move {
                     sleep(Duration::from_millis(30)).await;
-                    _ = notify_tx.send(Reload).await
+                    _ = notify_tx.send(Reload).await;
                 },
                 dns.run(),
             );
@@ -458,7 +461,7 @@ mod tests {
             }
         })
         .await
-        .unwrap() // panic on timeout
+        .unwrap(); // panic on timeout
     }
 
     #[tokio::test]
@@ -474,7 +477,7 @@ mod tests {
                 .unwrap();
             let notify_tx = dns.notify_tx.clone();
             let lookup_tx = dns.lookup_tx.clone();
-            let (_, dns_out) = join!(
+            let ((), dns_out) = join!(
                 async move {
                     let (tx1, rx2) = oneshot::channel();
                     let _ = lookup_tx.send(ARecordQuery(host.clone(), tx1)).await;
@@ -493,6 +496,6 @@ mod tests {
             dns_out.unwrap();
         })
         .await
-        .unwrap() // panic on timeout
+        .unwrap(); // panic on timeout
     }
 }

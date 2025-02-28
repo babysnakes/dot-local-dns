@@ -1,3 +1,6 @@
+#![warn(clippy::pedantic)]
+#![allow(clippy::enum_glob_use)]
+
 use crate::dns::LookupChannel::ARecordQuery;
 use crate::dns::{DnsServer, LookupChannel, Notification};
 use anyhow::Result;
