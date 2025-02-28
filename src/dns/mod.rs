@@ -240,10 +240,15 @@ async fn mk_udp_socket(addr: &SocketAddr) -> std::io::Result<UdpSocket> {
 
 #[cfg(test)]
 mod tests {
-    use super::lookup;
     use super::protocol::*;
+    use super::{lookup, DnsServer};
+    use crate::dns::LookupChannel::ARecordQuery;
+    use crate::dns::Notification::{Reload, Shutdown};
     use std::collections::HashMap;
     use std::net::Ipv4Addr;
+    use tokio::join;
+    use tokio::sync::oneshot;
+    use tokio::time::{sleep, timeout, Duration};
 
     macro_rules! lookup_tests {
         ($name:ident, $query_packet:expr, $response_code:expr, $extra_tests:expr) => {
@@ -413,5 +418,81 @@ mod tests {
         packet.header.id = 10;
         packet.questions.push(DnsQuestion::new(name, query_type));
         packet.clone()
+    }
+
+    #[tokio::test]
+    async fn service_starts_with_no_db_file() {
+        let mut dns = DnsServer::new(0, Some("non-existent-file".into()))
+            .await
+            .unwrap();
+        let notify_tx = dns.notify_tx.clone();
+        let (_, dns_out) = join!(
+            async move {
+                sleep(Duration::from_millis(100)).await;
+                _ = notify_tx.send(Shutdown).await
+            },
+            dns.run(),
+        );
+        dns_out.unwrap(); // assert did not return error.
+    }
+
+    #[tokio::test]
+    async fn reloading_records_fails_if_db_file_is_missing() {
+        timeout(Duration::from_millis(200), async {
+            let mut dns = DnsServer::new(0, Some("non-such-file".into()))
+                .await
+                .unwrap();
+            let notify_tx = dns.notify_tx.clone();
+            let (_, dns_out) = join!(
+                async move {
+                    sleep(Duration::from_millis(30)).await;
+                    _ = notify_tx.send(Reload).await
+                },
+                dns.run(),
+            );
+            match dns_out {
+                Err(e) if e.to_string().contains("os error 2") => {}
+                val => panic!(
+                    "reloading non existent file should have produced an error. got: {val:?}"
+                ),
+            }
+        })
+        .await
+        .unwrap() // panic on timeout
+    }
+
+    #[tokio::test]
+    async fn reloading_records_updates_live_service() {
+        use std::io::Write;
+        use tempfile::NamedTempFile;
+        timeout(Duration::from_secs(1), async {
+            let host = "test-host.local".to_owned();
+            let mut config_file = NamedTempFile::new().unwrap();
+            writeln!(config_file, "# comment").unwrap();
+            let mut dns = DnsServer::new(0, Some(config_file.path().into()))
+                .await
+                .unwrap();
+            let notify_tx = dns.notify_tx.clone();
+            let lookup_tx = dns.lookup_tx.clone();
+            let (_, dns_out) = join!(
+                async move {
+                    let (tx1, rx2) = oneshot::channel();
+                    let _ = lookup_tx.send(ARecordQuery(host.clone(), tx1)).await;
+                    let ip1 = rx2.await.unwrap().unwrap();
+                    assert_eq!(ip1, Ipv4Addr::LOCALHOST);
+                    _ = notify_tx.send(Reload).await;
+                    writeln!(config_file, "{host}:192.168.0.1").unwrap();
+                    let (tx2, rx2) = oneshot::channel();
+                    let _ = lookup_tx.send(ARecordQuery(host, tx2)).await;
+                    let ip2 = rx2.await.unwrap().unwrap();
+                    assert_eq!(ip2, "192.168.0.1".parse::<Ipv4Addr>().unwrap());
+                    notify_tx.send(Shutdown).await.unwrap();
+                },
+                dns.run(),
+            );
+            dns_out.unwrap();
+        })
+        .await
+        .unwrap() // panic on timeout
     }
 }

@@ -11,3 +11,7 @@ simple-home-dir = "0.4"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59.0", features = ["Win32_Networking_WinSock", "Win32_System_IO"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["time"] }
+tempfile = "3"
