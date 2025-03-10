@@ -47,7 +47,7 @@ pub async fn load_from_file(file: impl AsRef<Path>) -> Result<RecordsDB> {
 }
 
 pub fn default_db_path() -> Result<PathBuf> {
-    use simple_home_dir::home_dir;
+    use dirs::home_dir;
     match home_dir() {
         Some(mut home) => {
             home.push(CONFIG_FILE_NAME);

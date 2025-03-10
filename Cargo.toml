@@ -7,7 +7,7 @@ edition = "2021"
 # optionally delete tokio features: io-std, io-util
 tokio = { version = "1", features = ["rt", "fs", "net", "macros", "sync", "rt-multi-thread", "io-std", "io-util"] }
 anyhow = "1.0"
-simple-home-dir = "0.4"
+dirs = "6"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59.0", features = ["Win32_Networking_WinSock", "Win32_System_IO"] }
