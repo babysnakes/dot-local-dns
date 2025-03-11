@@ -3,6 +3,7 @@
 
 use crate::dns::LookupChannel::ARecordQuery;
 use crate::dns::{DnsServer, LookupChannel, Notification};
+use crate::logging::configure_logging;
 use anyhow::Result;
 use dns::Notification::*;
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -12,6 +13,7 @@ use tokio::{io, join};
 
 mod constants;
 mod dns;
+mod logging;
 
 async fn console_loop(
     lookup_tx: Sender<LookupChannel>,
@@ -42,6 +44,7 @@ async fn console_loop(
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    configure_logging()?;
     let mut dns_server = DnsServer::new(53, None).await?;
     let lookup_tx = dns_server.lookup_tx.clone();
     let notify_tx = dns_server.notify_tx.clone();

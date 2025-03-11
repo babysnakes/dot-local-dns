@@ -1,5 +1,6 @@
 use super::super::constants::CONFIG_FILE_NAME;
 use anyhow::{anyhow, Context, Result};
+use log::debug;
 use std::collections::HashMap;
 use std::net::Ipv4Addr;
 use std::path::{Path, PathBuf};
@@ -17,6 +18,7 @@ pub async fn try_from_file(file: impl AsRef<Path>) -> Result<RecordsDB> {
     if fs::try_exists(&file).await? {
         load_from_file(file).await
     } else {
+        debug!("Using empty records");
         Ok(HashMap::new())
     }
 }
@@ -28,6 +30,7 @@ pub async fn try_from_file(file: impl AsRef<Path>) -> Result<RecordsDB> {
 ///
 /// zero.local:0.0.0.0
 pub async fn load_from_file(file: impl AsRef<Path>) -> Result<RecordsDB> {
+    debug!("Loading records from file: {:?}", file.as_ref());
     let contents = fs::read_to_string(&file).await?;
     let mut records = HashMap::new();
     for line in contents.lines() {
@@ -58,6 +61,7 @@ pub fn default_db_path() -> Result<PathBuf> {
 }
 
 fn parse_line(line: &str) -> Result<(String, Ipv4Addr)> {
+    debug!("parsing line: {line}");
     let mut parts = line.splitn(2, ':');
     let name = parts.next().ok_or(anyhow!("Missing hostname"))?;
     let ip: Ipv4Addr = parts.next().ok_or(anyhow!("Missing IP"))?.parse()?;

@@ -5,6 +5,7 @@ mod records;
 
 use super::constants::*;
 use anyhow::{anyhow, Result};
+use log::{debug, error, info, trace, warn};
 use protocol::*;
 use std::collections::HashMap;
 use std::net::{Ipv4Addr, SocketAddr};
@@ -56,21 +57,21 @@ impl DnsServer {
     pub async fn run(&mut self) -> Result<()> {
         let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, self.port));
         let socket = mk_udp_socket(&addr).await?;
-        println!("Listening on: localhost:{}", self.port);
+        info!("Listening on: localhost:{}", self.port);
         loop {
             let mut req_buffer = BytePacketBuffer::new();
             select! {
                 biased;
                 notification = self.notify_rx.recv() => {
-                    println!("DNS server received notification: {notification:?}");
+                    debug!("DNS server received notification: {notification:?}");
                     if let Some(notification) = notification {
                         match notification {
                             Notification::Shutdown => {
-                                println!("DNS server received shutdown");
+                                info!("DNS server received shutdown");
                                 return Ok(());
                             },
                             Notification::Reload => {
-                                println!("Reloading Configuration");
+                                info!("Reloading Configuration");
                                 self.reload_config().await?;
                             }
                         }
@@ -89,7 +90,7 @@ impl DnsServer {
     async fn reload_config(&mut self) -> Result<()> {
         let records = records::load_from_file(&self.db_path).await?;
         self.records = records;
-        println!("Records reloaded");
+        info!("Records reloaded");
         Ok(())
     }
 
@@ -112,20 +113,19 @@ impl DnsServer {
     }
 
     fn handle_name_lookup(&self, message: Option<LookupChannel>) {
-        println!("DNS server received lookup channel: {message:?}");
+        debug!("DNS server received lookup channel: {message:?}");
         if let Some(LookupChannel::ARecordQuery(host, tx)) = message {
             let res = lookup_name(host, &self.records);
             if tx.send(res).is_err() {
-                println!("Error sending response to lookup channel");
+                error!("Error sending response to lookup channel");
             }
         }
     }
 }
 
 fn lookup(request: &DnsPacket, domain: &HashMap<String, Ipv4Addr>) -> DnsPacket {
-    // dbg!{request};
     let id = &request.header.id;
-    // trace!("received query (id: {}): {:?}", &id, &request);
+    trace!("received query (id: {}): {:?}", &id, &request);
     let mut response = DnsPacket::new();
     response.header.response = true;
     response.header.id = *id;
@@ -139,20 +139,20 @@ fn lookup(request: &DnsPacket, domain: &HashMap<String, Ipv4Addr>) -> DnsPacket 
     let query = &request.questions[0];
     response.questions.push(query.clone());
 
-        if request.header.response {
-            // warn!("received response as question (id: {})", &id);
-            response.header.rescode = ResultCode::NOTIMP;
-            return response;
+    if request.header.response {
+        warn!("received response as question (id: {})", &id);
+        response.header.rescode = ResultCode::NOTIMP;
+        return response;
     }
 
     if request.header.opcode != 0 {
-        // warn!("received non-zero opcode (id: {})", &id);
+        warn!("received non-zero opcode (id: {})", &id);
         response.header.rescode = ResultCode::NOTIMP;
         return response;
     }
 
     if !query.name.ends_with(TOP_LEVEL_DOMAIN) {
-        // warn!("unsupported domain (id: {}): {}", &id, &query.name);
+        warn!("unsupported domain (id: {}): {}", &id, &query.name);
         response.header.rescode = ResultCode::SERVFAIL;
         return response;
     }
@@ -167,15 +167,15 @@ fn lookup(request: &DnsPacket, domain: &HashMap<String, Ipv4Addr>) -> DnsPacket 
             response.answers.push(record);
         }
         QueryType::AAAA | QueryType::CNAME | QueryType::MX | QueryType::NS | QueryType::SOA => {
-            // debug!("received request for undefined query type: {:?}", &query);
+            debug!("received request for undefined query type: {:?}", &query);
             response.header.rescode = ResultCode::NOERROR;
         }
-        QueryType::UNKNOWN(_x) => {
-            // warn!("received query of unsupported type ({}): {:?}", x, &query);
+        QueryType::UNKNOWN(x) => {
+            warn!("received query of unsupported type ({}): {:?}", x, &query);
             response.header.rescode = ResultCode::SERVFAIL;
         }
     }
-    // debug!("response is: {:#?}", &response);
+    debug!("response is: {:#?}", &response);
     response
 }
 
