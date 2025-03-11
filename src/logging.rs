@@ -1,6 +1,6 @@
 use crate::constants::app_config_dir;
 use anyhow::Result;
-use flexi_logger::{Cleanup, Criterion, FileSpec, Logger, Naming};
+use flexi_logger::{detailed_format, Cleanup, Criterion, FileSpec, Logger, Naming};
 
 pub fn configure_logging() -> Result<()> {
     if cfg!(debug_assertions) {
@@ -17,6 +17,7 @@ pub fn configure_logging() -> Result<()> {
                 Naming::Numbers,
                 Cleanup::KeepLogFiles(7),
             )
+            .format(detailed_format)
             .start()?;
     }
     Ok(())
