@@ -1,4 +1,4 @@
-use crate::constants::app_config_dir;
+use crate::shared::app_config_dir;
 use anyhow::Result;
 use flexi_logger::{detailed_format, Cleanup, Criterion, FileSpec, Logger, Naming};
 

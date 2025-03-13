@@ -1,4 +1,4 @@
-use super::super::constants::CONFIG_FILE_NAME;
+use super::super::shared::CONFIG_FILE_NAME;
 use anyhow::{anyhow, Context, Result};
 use log::debug;
 use std::collections::HashMap;

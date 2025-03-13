@@ -3,7 +3,7 @@
 mod protocol;
 mod records;
 
-use super::constants::*;
+use super::shared::*;
 use anyhow::{anyhow, Result};
 use log::{debug, error, info, trace, warn};
 use protocol::*;
@@ -18,6 +18,7 @@ use windows_sys::Win32::Foundation::{BOOL, FALSE};
 
 pub struct DnsServer {
     pub notify_tx: Sender<Notification>,
+    #[allow(dead_code)] // todo: clear after actually using.
     pub lookup_tx: Sender<LookupChannel>,
     port: u16,
     db_path: PathBuf,
@@ -28,6 +29,7 @@ pub struct DnsServer {
 
 #[derive(Debug)]
 pub enum LookupChannel {
+    #[allow(dead_code)] // todo: clear after actually using.
     ARecordQuery(String, oneshot::Sender<Result<Ipv4Addr>>),
 }
 
@@ -108,7 +110,7 @@ impl DnsServer {
         response.write(&mut res_buffer)?;
         let pos = res_buffer.pos();
         let data = res_buffer.get_range(0, pos)?;
-        _ = socket.send_to(data, peer).await;
+        socket.send_to(data, peer).await?;
         Ok(())
     }
 
@@ -201,11 +203,6 @@ fn ip_from_domain_or_default(host: &str, domain: &HashMap<String, Ipv4Addr>) -> 
         .iter()
         .find(|&(name, _)| name == host || host.ends_with(&format!(".{name}")))
         .map_or(Ipv4Addr::LOCALHOST, |(_, ip)| *ip)
-}
-
-#[cfg(not(windows))]
-async fn mk_udp_socket(addr: SocketAddr) -> std::io::Result<UdpSocket> {
-    UdpSocket::bind(addr).await
 }
 
 #[allow(clippy::cast_possible_truncation)]

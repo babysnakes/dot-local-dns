@@ -1,57 +1,36 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![warn(clippy::pedantic)]
 #![allow(clippy::enum_glob_use)]
 
-use crate::dns::LookupChannel::ARecordQuery;
-use crate::dns::{DnsServer, LookupChannel, Notification};
+use crate::dns::DnsServer;
 use crate::logging::configure_logging;
+use crate::shared::{APP_NAME, notify_error, panic_with_error, send_notification};
+use crate::tray_app::{Application, UserEvent};
 use anyhow::Result;
-use dns::Notification::*;
-use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::sync::mpsc::Sender;
-use tokio::sync::oneshot;
-use tokio::{io, join};
+use log::error;
+use winit::event_loop::EventLoop;
 
-mod constants;
 mod dns;
 mod logging;
-
-async fn console_loop(
-    lookup_tx: Sender<LookupChannel>,
-    notify_tx: Sender<Notification>,
-) -> Result<()> {
-    let stdin = io::stdin();
-    let reader = BufReader::new(stdin);
-    let mut lines = reader.lines();
-
-    println!("print commands: reload or shutdown. Other strings will be interpreted as hostname to resolve...");
-
-    while let Ok(Some(line)) = lines.next_line().await {
-        if line.to_lowercase() == "shutdown" {
-            notify_tx.send(Shutdown).await?;
-            println!("shutdown complete");
-            break;
-        } else if line.to_lowercase() == "reload" {
-            notify_tx.send(Reload).await?;
-        } else {
-            let (tx, rx) = oneshot::channel();
-            let _ = lookup_tx.send(ARecordQuery(line, tx)).await;
-            let ip = rx.await?;
-            println!("lookup returned {ip:?}");
-        }
-    }
-    Ok(())
-}
+mod shared;
+mod tray_app;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     configure_logging()?;
     let mut dns_server = DnsServer::new(53, None).await?;
-    let lookup_tx = dns_server.lookup_tx.clone();
+    let event_loop = EventLoop::<UserEvent>::with_user_event().build()?;
     let notify_tx = dns_server.notify_tx.clone();
-    let (sout, dout) = join!(
-        dns_server.run(),
-        console_loop(lookup_tx.clone(), notify_tx.clone())
-    );
-    let _ = dbg!(sout, dout);
+    let shutdown_proxy = event_loop.create_proxy();
+    tokio::spawn(async move {
+        dns_server.run().await.unwrap_or_else(|e| {
+            notify_error!("DNS server error: {}", e);
+            _ = shutdown_proxy.send_event(UserEvent::Shutdown);
+        });
+    });
+    let mut app = Application::new(&event_loop, notify_tx);
+    if let Err(e) = event_loop.run_app(&mut app) {
+        panic_with_error!("Error: {}", e);
+    }
     Ok(())
 }
