@@ -5,6 +5,8 @@ mod records;
 
 use super::shared::*;
 use anyhow::{anyhow, Result};
+use failsafe::futures::CircuitBreaker;
+use failsafe::Config;
 use log::{debug, error, info, trace, warn};
 use protocol::*;
 use std::collections::HashMap;
@@ -60,6 +62,7 @@ impl DnsServer {
         let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, self.port));
         let socket = mk_udp_socket(&addr).await?;
         info!("Listening on: localhost:{}", self.port);
+        let circuit_breaker = Config::new().build();
         loop {
             let mut req_buffer = BytePacketBuffer::new();
             select! {
@@ -73,8 +76,11 @@ impl DnsServer {
                                 return Ok(());
                             },
                             Notification::Reload => {
-                                info!("Reloading Configuration");
-                                self.reload_config().await?;
+                                info!("Reloading Records");
+                                self.reload_records().await.unwrap_or_else(|e| {
+                                    let path = &self.db_path.to_string_lossy();
+                                    notify_error!("Error reloading records file ({path}): {e}");
+                                });
                             }
                         }
                     }
@@ -83,13 +89,23 @@ impl DnsServer {
                     self.handle_name_lookup(message);
                 }
                 received = socket.recv_from(&mut req_buffer.buf) => {
-                    self.handle_request(received, &mut req_buffer, &socket).await?;
+                    let handler = self.handle_request(received, &mut req_buffer, &socket);
+                    match circuit_breaker.call(handler).await {
+                        Ok(()) => {},
+                        Err(failsafe::Error::Inner(e)) => {
+                            error!("DNS server error: {e}");
+                        },
+                        Err(failsafe::Error::Rejected) => {
+                            error!("Circuit breaker rejected");
+                            return Err(anyhow!("Multiple Errors on DNS Server! Quitting! Check the logs!"));
+                        }
+                    }
                 }
             }
         }
     }
 
-    async fn reload_config(&mut self) -> Result<()> {
+    async fn reload_records(&mut self) -> Result<()> {
         let records = records::load_from_file(&self.db_path).await?;
         self.records = records;
         info!("Records reloaded");
@@ -467,9 +483,9 @@ mod tests {
         use tempfile::NamedTempFile;
         timeout(Duration::from_secs(1), async {
             let host = "test-host.local".to_owned();
-            let mut config_file = NamedTempFile::new().unwrap();
-            writeln!(config_file, "# comment").unwrap();
-            let mut dns = DnsServer::new(0, Some(config_file.path().into()))
+            let mut records_file = NamedTempFile::new().unwrap();
+            writeln!(records_file, "# comment").unwrap();
+            let mut dns = DnsServer::new(0, Some(records_file.path().into()))
                 .await
                 .unwrap();
             let notify_tx = dns.notify_tx.clone();
@@ -481,7 +497,7 @@ mod tests {
                     let ip1 = rx2.await.unwrap().unwrap();
                     assert_eq!(ip1, Ipv4Addr::LOCALHOST);
                     _ = notify_tx.send(Reload).await;
-                    writeln!(config_file, "{host}:192.168.0.1").unwrap();
+                    writeln!(records_file, "{host}:192.168.0.1").unwrap();
                     let (tx2, rx2) = oneshot::channel();
                     let _ = lookup_tx.send(ARecordQuery(host, tx2)).await;
                     let ip2 = rx2.await.unwrap().unwrap();

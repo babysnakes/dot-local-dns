@@ -4,7 +4,7 @@
 
 use crate::dns::DnsServer;
 use crate::logging::configure_logging;
-use crate::shared::{APP_NAME, notify_error, panic_with_error, send_notification};
+use crate::shared::{notify_error, panic_with_error, send_notification, APP_NAME};
 use crate::tray_app::{Application, UserEvent};
 use anyhow::Result;
 use log::error;

@@ -1,11 +1,11 @@
 use anyhow::{Context, Result};
-use std::path::PathBuf;
 use log::error;
 use notify_rust::Notification;
+use std::path::PathBuf;
 use tray_icon::menu::AboutMetadata;
 
 pub const TOP_LEVEL_DOMAIN: &str = ".local";
-pub const CONFIG_FILE_NAME: &str = ".local.ns-entries";
+pub const RECORDS_FILE_NAME: &str = ".dot-local-records";
 pub const APP_NAME: &str = "DotLocal-DNS";
 pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 

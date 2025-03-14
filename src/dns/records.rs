@@ -1,4 +1,4 @@
-use super::super::shared::CONFIG_FILE_NAME;
+use super::super::shared::RECORDS_FILE_NAME;
 use anyhow::{anyhow, Context, Result};
 use log::debug;
 use std::collections::HashMap;
@@ -53,7 +53,7 @@ pub fn default_db_path() -> Result<PathBuf> {
     use dirs::home_dir;
     match home_dir() {
         Some(mut home) => {
-            home.push(CONFIG_FILE_NAME);
+            home.push(RECORDS_FILE_NAME);
             Ok(home)
         }
         None => Err(anyhow!("FATAL! Couldn't extract home directory")),

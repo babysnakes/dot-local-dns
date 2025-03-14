@@ -1,6 +1,6 @@
 use crate::dns::Notification;
 use crate::dns::Notification::{Reload, Shutdown};
-use crate::shared::{APP_NAME, about_manifest, notify_error, panic_with_error, send_notification};
+use crate::shared::{about_manifest, notify_error, panic_with_error, send_notification, APP_NAME};
 use anyhow::Error;
 use log::{debug, error, info};
 use tokio::sync::mpsc::Sender;
@@ -106,10 +106,10 @@ impl ApplicationHandler<UserEvent> for Application {
                     });
                 });
             }
-            UserEvent::MenuEvent(_) => {},
+            UserEvent::MenuEvent(_) => {}
             UserEvent::Shutdown => {
                 event_loop.exit();
-            },
+            }
         }
     }
 
