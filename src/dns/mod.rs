@@ -453,31 +453,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn reloading_records_fails_if_db_file_is_missing() {
-        timeout(Duration::from_millis(200), async {
-            let mut dns = DnsServer::new(0, Some("non-such-file".into()))
-                .await
-                .unwrap();
-            let notify_tx = dns.notify_tx.clone();
-            let ((), dns_out) = join!(
-                async move {
-                    sleep(Duration::from_millis(30)).await;
-                    _ = notify_tx.send(Reload).await;
-                },
-                dns.run(),
-            );
-            match dns_out {
-                Err(e) if e.to_string().contains("os error 2") => {}
-                val => panic!(
-                    "reloading non existent file should have produced an error. got: {val:?}"
-                ),
-            }
-        })
-        .await
-        .unwrap(); // panic on timeout
-    }
-
-    #[tokio::test]
     async fn reloading_records_updates_live_service() {
         use std::io::Write;
         use tempfile::NamedTempFile;

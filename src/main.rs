@@ -16,7 +16,14 @@ mod shared;
 mod tray_app;
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() {
+    if let Err(e) = run().await {
+        error!("DNS server error: {}", e);
+        error_message(format!("{e}"));
+    }
+}
+
+async fn run() -> Result<()> {
     configure_logging()?;
     let mut dns_server = DnsServer::new(53, None).await?;
     let event_loop = EventLoop::<UserEvent>::with_user_event().build()?;
@@ -30,9 +37,6 @@ async fn main() -> Result<()> {
         });
     });
     let mut app = Application::new(&event_loop, notify_tx);
-    if let Err(e) = event_loop.run_app(&mut app) {
-        error_message(format!("{e}"));
-        error!("{e}");
-    }
+    event_loop.run_app(&mut app)?;
     Ok(())
 }
