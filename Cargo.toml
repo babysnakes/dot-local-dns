@@ -25,3 +25,16 @@ tempfile = "3"
 [build-dependencies]
 winres = "0.1"
 
+[package.metadata.packager]
+name = "dot-local-dns"
+product-name = "DotLocal-DNS"
+identifier = "dev.babysnakes.dot-local-dns"
+version = "0.1.0"
+resources = ["resources/*.png", "resources/*.ico"]
+icons = ["resources/*.ico"]
+out-dir = "./dist"
+before-packaging-command = "cargo build --release"
+formats = ["nsis", "wix"]
+
+[package.metadata.packager.nsis]
+installer_icon = "resources/Icon.ico"
