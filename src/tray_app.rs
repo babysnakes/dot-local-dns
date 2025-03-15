@@ -1,9 +1,10 @@
 use crate::dns::Notification;
 use crate::dns::Notification::{Reload, Shutdown};
 use crate::shared::{
-    about_manifest, error_message, notify_error, panic_with_error, send_notification, APP_NAME,
+    about_manifest, app_config_dir, error_message, notify_error, panic_with_error,
+    send_notification, APP_NAME,
 };
-use anyhow::Error;
+use anyhow::{Error, Result};
 use log::{debug, error, info};
 use tokio::sync::mpsc::Sender;
 use tray_icon::{
@@ -20,6 +21,7 @@ use winit::{
 
 const QUIT_ID: &str = "quit";
 const RELOAD_ID: &str = "reload";
+const LOGS_ID: &str = "log_dir";
 
 pub struct Application {
     tray_app: Option<TrayIcon>,
@@ -66,9 +68,11 @@ impl Application {
     fn create_menu() -> Menu {
         let quit_i = MenuItem::with_id(QUIT_ID, "Quit", true, None);
         let reload_i = MenuItem::with_id(RELOAD_ID, "Reload Records", true, None);
+        let logs_i = MenuItem::with_id(LOGS_ID, "Open Logs Directory", true, None);
         Menu::with_items(&[
             &PredefinedMenuItem::about("About".into(), Some(about_manifest())),
             &reload_i,
+            &logs_i,
             &PredefinedMenuItem::separator(),
             &quit_i,
         ])
@@ -108,6 +112,12 @@ impl ApplicationHandler<UserEvent> for Application {
                     });
                 });
             }
+            UserEvent::MenuEvent(MenuEvent { id: MenuId(id) }) if id == LOGS_ID => {
+                debug!("Open logs directory");
+                if let Err(e) = open_logs_directory() {
+                    error_message(format!("Error opening logs directory: {e}"));
+                }
+            }
             UserEvent::MenuEvent(_) => {}
             UserEvent::Shutdown => {
                 event_loop.exit();
@@ -139,4 +149,9 @@ fn load_icon(resource: &[u8]) -> tray_icon::Icon {
         .unwrap_or_else(|err| {
             panic_with_error!("Error loading icon: {err}");
         })
+}
+
+fn open_logs_directory() -> Result<()> {
+    open::that(app_config_dir()?)?;
+    Ok(())
 }
