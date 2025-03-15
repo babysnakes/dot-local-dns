@@ -1,6 +1,8 @@
 use crate::dns::Notification;
 use crate::dns::Notification::{Reload, Shutdown};
-use crate::shared::{about_manifest, notify_error, panic_with_error, send_notification, APP_NAME};
+use crate::shared::{
+    about_manifest, error_message, notify_error, panic_with_error, send_notification, APP_NAME,
+};
 use anyhow::Error;
 use log::{debug, error, info};
 use tokio::sync::mpsc::Sender;
@@ -57,7 +59,7 @@ impl Application {
             .with_icon(icon)
             .build()
             .unwrap_or_else(|e| {
-                panic_with_error!("Failed creating tray icon: {e}");
+                panic_with_error!("Error creating tray icon: {e}");
             })
     }
 
@@ -71,7 +73,7 @@ impl Application {
             &quit_i,
         ])
         .unwrap_or_else(|e| {
-            panic_with_error!("Error creating main item: {e}");
+            panic_with_error!("Error creating menu: {e}");
         })
     }
 }

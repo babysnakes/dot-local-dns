@@ -4,7 +4,7 @@
 
 use crate::dns::DnsServer;
 use crate::logging::configure_logging;
-use crate::shared::{notify_error, panic_with_error, send_notification, APP_NAME};
+use crate::shared::error_message;
 use crate::tray_app::{Application, UserEvent};
 use anyhow::Result;
 use log::error;
@@ -24,13 +24,15 @@ async fn main() -> Result<()> {
     let shutdown_proxy = event_loop.create_proxy();
     tokio::spawn(async move {
         dns_server.run().await.unwrap_or_else(|e| {
-            notify_error!("DNS server error: {}", e);
+            error!("DNS server error: {}", e);
+            error_message(format!("{e}"));
             _ = shutdown_proxy.send_event(UserEvent::Shutdown);
         });
     });
     let mut app = Application::new(&event_loop, notify_tx);
     if let Err(e) = event_loop.run_app(&mut app) {
-        panic_with_error!("Error: {}", e);
+        error_message(format!("{e}"));
+        error!("{e}");
     }
     Ok(())
 }

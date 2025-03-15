@@ -43,7 +43,8 @@ macro_rules! notify_error {
 
 macro_rules! panic_with_error {
     ($($arg:tt)+) => {
-        notify_error!($($arg)+);
+        error!($($arg)+);
+        error_message(format!($($arg)+));
         panic!("{}", format_args!($($arg)+));
     };
 }
@@ -58,4 +59,18 @@ pub fn send_notification(summary: &str, body: &str) {
         .body(body)
         .show()
         .unwrap_or_else(|e| error!("{}", e));
+}
+
+pub fn error_message(body: String) {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxA, MB_ICONERROR, MB_OK};
+
+    let title = format!("{APP_NAME} Error");
+    tokio::task::spawn_blocking(move || unsafe {
+        MessageBoxA(
+            0 as _,
+            body.as_ptr().cast(),
+            title.as_ptr().cast(),
+            MB_OK | MB_ICONERROR,
+        );
+    });
 }
