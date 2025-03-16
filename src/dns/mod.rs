@@ -11,7 +11,7 @@ use log::{debug, error, info, trace, warn};
 use protocol::*;
 use std::collections::HashMap;
 use std::net::{Ipv4Addr, SocketAddr};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tokio::net::UdpSocket;
 use tokio::select;
 use tokio::sync::mpsc::{self, Receiver, Sender};
@@ -19,6 +19,7 @@ use tokio::sync::oneshot;
 use windows_sys::Win32::Foundation::{BOOL, FALSE};
 
 pub struct DnsServer {
+    top_level_domain: String,
     pub notify_tx: Sender<Notification>,
     #[allow(dead_code)] // todo: clear after actually using.
     pub lookup_tx: Sender<LookupChannel>,
@@ -42,12 +43,13 @@ pub enum Notification {
 }
 
 impl DnsServer {
-    pub async fn new(port: u16, db_path: Option<PathBuf>) -> Result<Self> {
-        let db_path = db_path.unwrap_or(records::default_db_path()?);
+    pub async fn new(port: u16, db_path: impl AsRef<Path>, top_level_domain: &str) -> Result<Self> {
+        let db_path = db_path.as_ref().to_owned();
         let records = records::try_from_file(&db_path).await?;
         let (notify_tx, notify_rx) = mpsc::channel::<Notification>(1);
         let (lookup_tx, lookup_rx) = mpsc::channel::<LookupChannel>(4);
         Ok(Self {
+            top_level_domain: top_level_domain.to_owned(),
             notify_tx,
             lookup_tx,
             port,
@@ -121,7 +123,7 @@ impl DnsServer {
     ) -> Result<()> {
         let (_len, peer) = received?;
         let request = DnsPacket::from_buffer(req_buffer).await?;
-        let mut response = lookup(&request, &self.records);
+        let mut response = self.lookup(&request);
         let mut res_buffer = BytePacketBuffer::new();
         response.write(&mut res_buffer)?;
         let pos = res_buffer.pos();
@@ -133,84 +135,84 @@ impl DnsServer {
     fn handle_name_lookup(&self, message: Option<LookupChannel>) {
         debug!("DNS server received lookup channel: {message:?}");
         if let Some(LookupChannel::ARecordQuery(host, tx)) = message {
-            let res = lookup_name(host, &self.records);
+            let res = self.lookup_name(host);
             if tx.send(res).is_err() {
                 error!("Error sending response to lookup channel");
             }
         }
     }
-}
 
-fn lookup(request: &DnsPacket, domain: &HashMap<String, Ipv4Addr>) -> DnsPacket {
-    let id = &request.header.id;
-    trace!("received query (id: {}): {:?}", &id, &request);
-    let mut response = DnsPacket::new();
-    response.header.response = true;
-    response.header.id = *id;
-    response.header.recursion_desired = request.header.recursion_desired;
-
-    if request.questions.is_empty() {
-        response.header.rescode = ResultCode::NOTIMP;
-        return response;
-    }
-
-    let query = &request.questions[0];
-    response.questions.push(query.clone());
-
-    if request.header.response {
-        warn!("received response as question (id: {})", &id);
-        response.header.rescode = ResultCode::NOTIMP;
-        return response;
-    }
-
-    if request.header.opcode != 0 {
-        warn!("received non-zero opcode (id: {})", &id);
-        response.header.rescode = ResultCode::NOTIMP;
-        return response;
-    }
-
-    if !query.name.ends_with(TOP_LEVEL_DOMAIN) {
-        warn!("unsupported domain (id: {}): {}", &id, &query.name);
-        response.header.rescode = ResultCode::SERVFAIL;
-        return response;
-    }
-
-    match &query.qtype {
-        QueryType::A => {
-            let record = DnsRecord::A {
-                addr: ip_from_domain_or_default(&query.name, domain),
-                domain: query.name.to_string(),
-                ttl: 0,
-            };
-            response.answers.push(record);
+    fn lookup_name(&self, host: String) -> Result<Ipv4Addr> {
+        let mut query = DnsPacket::new();
+        let question = DnsQuestion::new(host, QueryType::A);
+        query.questions.push(question);
+        let response = &self.lookup(&query);
+        let result_code = ResultCode::from_num(response.header.opcode);
+        if response.answers.is_empty() {
+            return Err(anyhow!(
+                "DNS responded with no answers and code: {result_code:?}"
+            ));
         }
-        QueryType::AAAA | QueryType::CNAME | QueryType::MX | QueryType::NS | QueryType::SOA => {
-            debug!("received request for undefined query type: {:?}", &query);
-            response.header.rescode = ResultCode::NOERROR;
+        match response.answers.first() {
+            Some(DnsRecord::A { ref addr, .. }) => Ok(*addr),
+            _ => Err(anyhow!("DNS responded with")),
         }
-        QueryType::UNKNOWN(x) => {
-            warn!("received query of unsupported type ({}): {:?}", x, &query);
+    }
+
+    fn lookup(&self, request: &DnsPacket) -> DnsPacket {
+        let id = &request.header.id;
+        trace!("received query (id: {}): {:?}", &id, &request);
+        let mut response = DnsPacket::new();
+        response.header.response = true;
+        response.header.id = *id;
+        response.header.recursion_desired = request.header.recursion_desired;
+
+        if request.questions.is_empty() {
+            response.header.rescode = ResultCode::NOTIMP;
+            return response;
+        }
+
+        let query = &request.questions[0];
+        response.questions.push(query.clone());
+
+        if request.header.response {
+            warn!("received response as question (id: {})", &id);
+            response.header.rescode = ResultCode::NOTIMP;
+            return response;
+        }
+
+        if request.header.opcode != 0 {
+            warn!("received non-zero opcode (id: {})", &id);
+            response.header.rescode = ResultCode::NOTIMP;
+            return response;
+        }
+
+        if !query.name.ends_with(&self.top_level_domain) {
+            warn!("unsupported domain (id: {}): {}", &id, &query.name);
             response.header.rescode = ResultCode::SERVFAIL;
+            return response;
         }
-    }
-    debug!("response is: {:#?}", &response);
-    response
-}
 
-fn lookup_name(host: String, domain: &HashMap<String, Ipv4Addr>) -> Result<Ipv4Addr> {
-    let mut query = DnsPacket::new();
-    let question = DnsQuestion::new(host, QueryType::A);
-    query.questions.push(question);
-    let response = lookup(&query, domain);
-    let result_code = ResultCode::from_num(response.header.opcode);
-    if response.answers.is_empty() {
-        return Err(anyhow!(
-            "DNS responded with no answers and code: {result_code:?}"
-        ));
-    }
-    match response.answers.first() {
-        Some(DnsRecord::A { ref addr, .. }) => Ok(*addr),
-        _ => Err(anyhow!("DNS responded with")),
+        match &query.qtype {
+            QueryType::A => {
+                let record = DnsRecord::A {
+                    addr: ip_from_domain_or_default(&query.name, &self.records),
+                    domain: query.name.to_string(),
+                    ttl: 0,
+                };
+                response.answers.push(record);
+            }
+            QueryType::AAAA | QueryType::CNAME | QueryType::MX | QueryType::NS | QueryType::SOA => {
+                debug!("received request for undefined query type: {:?}", &query);
+                response.header.rescode = ResultCode::NOERROR;
+            }
+            QueryType::UNKNOWN(x) => {
+                warn!("received query of unsupported type ({}): {:?}", x, &query);
+                response.header.rescode = ResultCode::SERVFAIL;
+            }
+        }
+        debug!("response is: {:#?}", &response);
+        response
     }
 }
 
@@ -257,7 +259,8 @@ async fn mk_udp_socket(addr: &SocketAddr) -> std::io::Result<UdpSocket> {
 #[cfg(test)]
 mod tests {
     use super::protocol::*;
-    use super::{lookup, DnsServer};
+    use super::DnsServer;
+    use crate::dns::records::RecordsDB;
     use crate::dns::LookupChannel::ARecordQuery;
     use crate::dns::Notification::{Reload, Shutdown};
     use std::collections::HashMap;
@@ -266,179 +269,153 @@ mod tests {
     use tokio::sync::oneshot;
     use tokio::time::{sleep, timeout, Duration};
 
-    macro_rules! lookup_tests {
-        ($name:ident, $query_packet:expr, $response_code:expr, $extra_tests:expr) => {
-            #[test]
-            fn $name() {
-                let response = lookup($query_packet, &records());
-                // a few common tests
-                assert_eq!($query_packet.header.id, response.header.id);
-                assert_eq!(response.header.rescode, $response_code);
-                // provided test function
-                $extra_tests(&response);
+    const TOP_LEVEL: &str = ".local";
+
+    #[tokio::test]
+    async fn normal_dns_request() {
+        let mut query = packet_with_question("hello.local".to_string(), QueryType::A);
+        query.header.recursion_desired = true;
+        let response = basic_query_and_validation(query, ResultCode::NOERROR, records()).await;
+        assert!(response.header.recursion_desired);
+        assert_eq!(
+            response.questions[0].name, "hello.local",
+            "response question's name doesn't match original name"
+        );
+        assert_eq!(
+            response.answers[0],
+            DnsRecord::A {
+                domain: "hello.local".to_string(),
+                addr: Ipv4Addr::LOCALHOST,
+                ttl: 0
             }
-        };
+        );
     }
 
-    lookup_tests! {
-        normal_dns_request,
-        {
-            let mut packet = packet_with_question("hello.local".to_string(), QueryType::A);
-            packet.header.recursion_desired = true;
-            &packet.clone()
-        },
-        ResultCode::NOERROR,
-        |response: &DnsPacket| {
-            assert!(response.header.recursion_desired);
-            assert_eq!(
-                response.questions[0].name, "hello.local",
-                "response question's name doesn't match original name"
-            );
-            assert_eq!(
-                response.answers[0],
-                DnsRecord::A {
-                    domain: "hello.local".to_string(),
-                    addr: Ipv4Addr::LOCALHOST,
-                    ttl: 0
-                }
-            );
-        }
-    }
-
-    lookup_tests! {
-        subdomain_a_requests_are_supported,
-        &packet_with_question("sub.domain.local".to_string(), QueryType::A),
-        ResultCode::NOERROR,
-        |response: &DnsPacket| {
-            match response.answers[0] {
-                DnsRecord::A { ref domain, ref addr, .. } => {
-                    assert_eq!(domain, "sub.domain.local");
-                    assert_eq!(*addr, Ipv4Addr::LOCALHOST);
-                }
-                _ => panic!("Did not receive DnsRecord::A (received {:?}", response.answers[0]),
+    #[tokio::test]
+    async fn subdomain_a_requests_are_supported() {
+        let query = packet_with_question("sub.domain.local".to_string(), QueryType::A);
+        let response = basic_query_and_validation(query, ResultCode::NOERROR, records()).await;
+        match response.answers[0] {
+            DnsRecord::A {
+                ref domain,
+                ref addr,
+                ..
+            } => {
+                assert_eq!(domain, "sub.domain.local");
+                assert_eq!(*addr, Ipv4Addr::LOCALHOST);
             }
+            _ => panic!(
+                "Did not receive DnsRecord::A (received {:?}",
+                response.answers[0]
+            ),
         }
     }
 
-    lookup_tests! {
-        query_of_existing_record_returns_the_record,
-        &packet_with_question("registered.local".to_string(), QueryType::A),
-        ResultCode::NOERROR,
-        |response: &DnsPacket| {
-            match response.answers[0] {
-                DnsRecord::A { ref domain, ref addr, .. } => {
-                    assert_eq!(domain, "registered.local");
-                    assert_eq!(*addr, "192.168.0.1".parse::<Ipv4Addr>().unwrap());
-                }
-                _ => panic!("Did not receive DnsRecord::A (received {:?}", response.answers[0]),
+    #[tokio::test]
+    async fn query_of_existing_record_returns_the_record() {
+        let query = packet_with_question("registered.local".to_string(), QueryType::A);
+        let response = basic_query_and_validation(query, ResultCode::NOERROR, records()).await;
+        match response.answers[0] {
+            DnsRecord::A {
+                ref domain,
+                ref addr,
+                ..
+            } => {
+                assert_eq!(domain, "registered.local");
+                assert_eq!(*addr, "192.168.0.1".parse::<Ipv4Addr>().unwrap());
             }
+            _ => panic!(
+                "Did not receive DnsRecord::A (received {:?}",
+                response.answers[0]
+            ),
         }
     }
 
-    lookup_tests! {
-        query_subdomain_of_existing_record_returns_the_record,
-        &packet_with_question("sub.registered.local".to_string(), QueryType::A),
-        ResultCode::NOERROR,
-        |response: &DnsPacket| {
-            match response.answers[0] {
-                DnsRecord::A { ref domain, ref addr, .. } => {
-                    assert_eq!(domain, "sub.registered.local");
-                    assert_eq!(*addr, "192.168.0.1".parse::<Ipv4Addr>().unwrap());
-                }
-                _ => panic!("Did not receive DnsRecord::A (received {:?}", response.answers[0]),
+    #[tokio::test]
+    async fn query_subdomain_of_existing_record_returns_the_record() {
+        let query = packet_with_question("sub.registered.local".to_string(), QueryType::A);
+        let response = basic_query_and_validation(query, ResultCode::NOERROR, records()).await;
+        match response.answers[0] {
+            DnsRecord::A {
+                ref domain,
+                ref addr,
+                ..
+            } => {
+                assert_eq!(domain, "sub.registered.local");
+                assert_eq!(*addr, "192.168.0.1".parse::<Ipv4Addr>().unwrap());
             }
+            _ => panic!(
+                "Did not receive DnsRecord::A (received {:?}",
+                response.answers[0]
+            ),
         }
     }
 
-    lookup_tests! {
-        query_name_that_ends_with_existing_record_returns_localhost,
-        &packet_with_question("not-registered.local".to_string(), QueryType::A),
-        ResultCode::NOERROR,
-        |response: &DnsPacket| {
-            match response.answers[0] {
-                DnsRecord::A { ref domain, ref addr, .. } => {
-                    assert_eq!(domain, "not-registered.local");
-                    assert_eq!(*addr, Ipv4Addr::LOCALHOST);
-                }
-                _ => panic!("Did not receive DnsRecord::A (received {:?}", response.answers[0]),
+    #[tokio::test]
+    async fn query_name_that_ends_with_existing_record_returns_localhost() {
+        let query = packet_with_question("not-registered.local".to_string(), QueryType::A);
+        let response = basic_query_and_validation(query, ResultCode::NOERROR, records()).await;
+        match response.answers[0] {
+            DnsRecord::A {
+                ref domain,
+                ref addr,
+                ..
+            } => {
+                assert_eq!(domain, "not-registered.local");
+                assert_eq!(*addr, Ipv4Addr::LOCALHOST);
             }
+            _ => panic!(
+                "Did not receive DnsRecord::A (received {:?}",
+                response.answers[0]
+            ),
         }
     }
 
-    lookup_tests! {
-        soa_requests_return_no_error_and_zero_answers,
-        &packet_with_question("test.local".to_string(), QueryType::SOA),
-        ResultCode::NOERROR,
-        |response: &DnsPacket| {
-            assert_eq!(response.answers.len(), 0);
-        }
+    #[tokio::test]
+    async fn soa_requests_return_no_error_and_zero_answers() {
+        let query = packet_with_question("test.local".to_string(), QueryType::SOA);
+        let response = basic_query_and_validation(query, ResultCode::NOERROR, records()).await;
+        assert_eq!(response.answers.len(), 0);
     }
 
-    lookup_tests! {
-        ns_requests_return_no_error_and_zero_answers,
-        &packet_with_question("test.local".to_string(), QueryType::NS),
-        ResultCode::NOERROR,
-        |response: &DnsPacket| {
-            assert_eq!(response.answers.len(), 0);
-        }
+    #[tokio::test]
+    async fn ns_requests_return_no_error_and_zero_answers() {
+        let query = packet_with_question("test.local".to_string(), QueryType::NS);
+        let response = basic_query_and_validation(query, ResultCode::NOERROR, records()).await;
+        assert_eq!(response.answers.len(), 0);
     }
 
-    lookup_tests! {
-        packets_with_no_queries_are_not_implemented,
-        {
-            let mut packet = DnsPacket::new();
-            packet.header.id = 1234;
-            &packet.clone()
-        },
-        ResultCode::NOTIMP,
-        |_| {}
+    #[tokio::test]
+    async fn packets_with_no_queries_are_not_implemented() {
+        let mut query = DnsPacket::new();
+        query.header.id = 1234;
+        basic_query_and_validation(query, ResultCode::NOTIMP, records()).await;
     }
 
-    lookup_tests! {
-        response_packets_are_not_supported,
-        {
-            let mut packet = packet_with_question("test.local".to_string(), QueryType::A);
-            packet.header.response = true;
-            &packet.clone()
-        },
-        ResultCode::NOTIMP,
-        |_| {}
+    #[tokio::test]
+    async fn response_packets_are_not_supported() {
+        let mut query = packet_with_question("test.local".to_string(), QueryType::A);
+        query.header.response = true;
+        basic_query_and_validation(query, ResultCode::NOTIMP, records()).await;
     }
 
-    lookup_tests! {
-        non_zero_opcode_are_not_supported,
-        {
-            let mut packet = packet_with_question("test.local".to_string(), QueryType::A);
-            packet.header.opcode = 1;
-            &packet.clone()
-        },
-        ResultCode::NOTIMP,
-        |_| {}
+    #[tokio::test]
+    async fn non_zero_opcode_are_not_supported() {
+        let mut query = packet_with_question("test.local".to_string(), QueryType::A);
+        query.header.opcode = 1;
+        basic_query_and_validation(query, ResultCode::NOTIMP, records()).await;
     }
 
-    lookup_tests! {
-        does_not_accept_wrong_domain,
-        &packet_with_question("example.com".to_string(), QueryType::A),
-        ResultCode::SERVFAIL,
-        |response: &DnsPacket| {
-            assert_eq!(response.answers.len(), 0);
-        }
-    }
-
-    fn records() -> HashMap<String, Ipv4Addr> {
-        HashMap::from([("registered.local".into(), "192.168.0.1".parse().unwrap())])
-    }
-
-    fn packet_with_question(name: String, query_type: QueryType) -> DnsPacket {
-        let mut packet = DnsPacket::new();
-        packet.header.id = 10;
-        packet.questions.push(DnsQuestion::new(name, query_type));
-        packet.clone()
+    #[tokio::test]
+    async fn does_not_accept_wrong_domain() {
+        let query = packet_with_question("example.com".to_string(), QueryType::A);
+        let response = basic_query_and_validation(query, ResultCode::SERVFAIL, records()).await;
+        assert_eq!(response.answers.len(), 0);
     }
 
     #[tokio::test]
     async fn service_starts_with_no_db_file() {
-        let mut dns = DnsServer::new(0, Some("non-existent-file".into()))
+        let mut dns = DnsServer::new(0, "non-existent-file", TOP_LEVEL)
             .await
             .unwrap();
         let notify_tx = dns.notify_tx.clone();
@@ -460,7 +437,7 @@ mod tests {
             let host = "test-host.local".to_owned();
             let mut records_file = NamedTempFile::new().unwrap();
             writeln!(records_file, "# comment").unwrap();
-            let mut dns = DnsServer::new(0, Some(records_file.path().into()))
+            let mut dns = DnsServer::new(0, records_file.path(), TOP_LEVEL)
                 .await
                 .unwrap();
             let notify_tx = dns.notify_tx.clone();
@@ -485,5 +462,31 @@ mod tests {
         })
         .await
         .unwrap(); // panic on timeout
+    }
+
+    async fn basic_query_and_validation(
+        query: DnsPacket,
+        result: ResultCode,
+        records: RecordsDB,
+    ) -> DnsPacket {
+        let mut ds = DnsServer::new(0, "non-existent-file", TOP_LEVEL)
+            .await
+            .unwrap();
+        ds.records = records;
+        let response = ds.lookup(&query);
+        assert_eq!(query.header.id, response.header.id);
+        assert_eq!(response.header.rescode, result);
+        response
+    }
+
+    fn records() -> HashMap<String, Ipv4Addr> {
+        HashMap::from([("registered.local".into(), "192.168.0.1".parse().unwrap())])
+    }
+
+    fn packet_with_question(name: String, query_type: QueryType) -> DnsPacket {
+        let mut packet = DnsPacket::new();
+        packet.header.id = 10;
+        packet.questions.push(DnsQuestion::new(name, query_type));
+        packet.clone()
     }
 }

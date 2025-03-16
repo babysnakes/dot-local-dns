@@ -1,9 +1,8 @@
-use super::super::shared::RECORDS_FILE_NAME;
 use anyhow::{anyhow, Context, Result};
 use log::debug;
 use std::collections::HashMap;
 use std::net::Ipv4Addr;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use tokio::fs;
 
 pub type RecordsDB = HashMap<String, Ipv4Addr>;
@@ -47,17 +46,6 @@ pub async fn load_from_file(file: impl AsRef<Path>) -> Result<RecordsDB> {
         }
     }
     Ok(records)
-}
-
-pub fn default_db_path() -> Result<PathBuf> {
-    use dirs::home_dir;
-    match home_dir() {
-        Some(mut home) => {
-            home.push(RECORDS_FILE_NAME);
-            Ok(home)
-        }
-        None => Err(anyhow!("FATAL! Couldn't extract home directory")),
-    }
 }
 
 fn parse_line(line: &str) -> Result<(String, Ipv4Addr)> {

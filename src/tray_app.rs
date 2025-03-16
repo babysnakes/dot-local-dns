@@ -1,7 +1,8 @@
+use crate::app_config::AppConfig;
 use crate::dns::Notification;
 use crate::dns::Notification::{Reload, Shutdown};
 use crate::shared::{
-    app_config_dir, error_message, notify_error, panic_with_error, send_notification, APP_NAME,
+    error_message, notify_error, open_path, panic_with_error, send_notification, APP_NAME,
     APP_VERSION,
 };
 use anyhow::{Error, Result};
@@ -24,9 +25,10 @@ const QUIT_ID: &str = "quit";
 const RELOAD_ID: &str = "reload";
 const LOGS_ID: &str = "log_dir";
 
-pub struct Application {
+pub struct Application<'a> {
     tray_app: Option<TrayIcon>,
     notification_tx: Sender<Notification>,
+    app_config: &'a AppConfig,
 }
 
 pub(crate) enum UserEvent {
@@ -34,8 +36,12 @@ pub(crate) enum UserEvent {
     Shutdown,
 }
 
-impl Application {
-    pub fn new(event_loop: &EventLoop<UserEvent>, notification_tx: Sender<Notification>) -> Self {
+impl<'a> Application<'a> {
+    pub fn new(
+        event_loop: &EventLoop<UserEvent>,
+        notification_tx: Sender<Notification>,
+        app_config: &'a AppConfig,
+    ) -> Self {
         let proxy = event_loop.create_proxy();
         MenuEvent::set_event_handler(Some(move |event| {
             proxy
@@ -47,6 +53,7 @@ impl Application {
         Self {
             tray_app: None,
             notification_tx,
+            app_config,
         }
     }
 
@@ -83,7 +90,7 @@ impl Application {
     }
 }
 
-impl ApplicationHandler<UserEvent> for Application {
+impl ApplicationHandler<UserEvent> for Application<'_> {
     fn new_events(&mut self, _event_loop: &ActiveEventLoop, cause: StartCause) {
         if StartCause::Init == cause {
             self.tray_app = Some(Self::create_tray());
@@ -115,7 +122,7 @@ impl ApplicationHandler<UserEvent> for Application {
             }
             UserEvent::MenuEvent(MenuEvent { id: MenuId(id) }) if id == LOGS_ID => {
                 debug!("Open logs directory");
-                if let Err(e) = open_logs_directory() {
+                if let Err(e) = open_path(&self.app_config.logging_dir) {
                     notify_error!("Error opening logs directory: {e}");
                 }
             }
@@ -161,11 +168,6 @@ fn load_rgba(resource: &[u8]) -> Result<(Vec<u8>, u32, u32)> {
     let rgb = img.into_rgba8();
     let (width, height) = rgb.dimensions();
     Ok((rgb.into_raw(), width, height))
-}
-
-fn open_logs_directory() -> Result<()> {
-    open::that(app_config_dir()?)?;
-    Ok(())
 }
 
 pub fn about_manifest() -> AboutMetadata {

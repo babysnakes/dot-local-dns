@@ -1,15 +1,15 @@
-use crate::shared::app_config_dir;
 use anyhow::Result;
 use flexi_logger::{detailed_format, Cleanup, Criterion, FileSpec, Logger, Naming};
+use std::path::PathBuf;
 
-pub fn configure_logging() -> Result<()> {
+pub fn configure_logging(log_level: &str, logging_dir: &PathBuf) -> Result<()> {
     if cfg!(debug_assertions) {
-        Logger::try_with_str("debug")?.start()?;
+        Logger::try_with_str(log_level)?.start()?;
     } else {
-        Logger::try_with_str("info")?
+        Logger::try_with_str(log_level)?
             .log_to_file(
                 FileSpec::default()
-                    .directory(app_config_dir()?)
+                    .directory(logging_dir)
                     .basename("application"),
             )
             .rotate(
