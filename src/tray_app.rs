@@ -1,12 +1,13 @@
 use crate::dns::Notification;
 use crate::dns::Notification::{Reload, Shutdown};
 use crate::shared::{
-    about_manifest, app_config_dir, error_message, notify_error, panic_with_error,
-    send_notification, APP_NAME,
+    app_config_dir, error_message, notify_error, panic_with_error, send_notification, APP_NAME,
+    APP_VERSION,
 };
 use anyhow::{Error, Result};
 use log::{debug, error, info};
 use tokio::sync::mpsc::Sender;
+use tray_icon::menu::{AboutMetadata, AboutMetadataBuilder};
 use tray_icon::{
     menu::{Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem},
     TrayIcon, TrayIconBuilder,
@@ -115,7 +116,7 @@ impl ApplicationHandler<UserEvent> for Application {
             UserEvent::MenuEvent(MenuEvent { id: MenuId(id) }) if id == LOGS_ID => {
                 debug!("Open logs directory");
                 if let Err(e) = open_logs_directory() {
-                    error_message(format!("Error opening logs directory: {e}"));
+                    notify_error!("Error opening logs directory: {e}");
                 }
             }
             UserEvent::MenuEvent(_) => {}
@@ -135,23 +136,44 @@ impl ApplicationHandler<UserEvent> for Application {
 }
 
 fn load_icon(resource: &[u8]) -> tray_icon::Icon {
-    image::load_from_memory(resource)
-        .map(image::DynamicImage::into_rgba8)
-        .map_err(Error::from)
-        .map(|img| {
-            let (width, height) = img.dimensions();
-            let rgba = img.into_raw();
-            (rgba, width, height)
-        })
+    load_rgba(resource)
         .and_then(|(rgba, width, height)| {
             tray_icon::Icon::from_rgba(rgba, width, height).map_err(Error::from)
         })
-        .unwrap_or_else(|err| {
-            panic_with_error!("Error loading icon: {err}");
+        .unwrap_or_else(|e| {
+            panic_with_error!("Error loading icon: {e}");
         })
+}
+
+fn load_about_icon(resource: &[u8]) -> Option<tray_icon::menu::Icon> {
+    load_rgba(resource)
+        .and_then(|(rgba, width, height)| {
+            tray_icon::menu::Icon::from_rgba(rgba, width, height).map_err(Error::from)
+        })
+        .inspect_err(|e| {
+            notify_error!("Error loading icon: {e}");
+        })
+        .ok()
+}
+
+fn load_rgba(resource: &[u8]) -> Result<(Vec<u8>, u32, u32)> {
+    let img = image::load_from_memory(resource)?;
+    let rgb = img.into_rgba8();
+    let (width, height) = rgb.dimensions();
+    Ok((rgb.into_raw(), width, height))
 }
 
 fn open_logs_directory() -> Result<()> {
     open::that(app_config_dir()?)?;
     Ok(())
+}
+
+pub fn about_manifest() -> AboutMetadata {
+    let icon_data = include_bytes!("../resources/Icon.png");
+    let icon = load_about_icon(icon_data);
+    AboutMetadataBuilder::new()
+        .name(Some(APP_NAME))
+        .icon(icon)
+        .version(Some(APP_VERSION))
+        .build()
 }

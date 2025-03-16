@@ -2,7 +2,6 @@ use anyhow::{Context, Result};
 use log::error;
 use notify_rust::Notification;
 use std::path::PathBuf;
-use tray_icon::menu::AboutMetadata;
 
 pub const TOP_LEVEL_DOMAIN: &str = ".local";
 pub const RECORDS_FILE_NAME: &str = ".dot-local-records";
@@ -13,22 +12,6 @@ pub fn app_config_dir() -> Result<PathBuf> {
     let mut path = dirs::config_dir().with_context(|| "Could not find config directory")?;
     path.push(APP_NAME);
     Ok(path)
-}
-
-pub fn about_manifest() -> AboutMetadata {
-    AboutMetadata {
-        name: Some(APP_NAME.to_owned()),
-        version: Some(APP_VERSION.into()),
-        short_version: None,
-        authors: None,
-        comments: None,
-        copyright: None,
-        license: None,
-        website: None,
-        website_label: None,
-        credits: None,
-        icon: None,
-    }
 }
 
 macro_rules! notify_error {
