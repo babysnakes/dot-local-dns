@@ -26,11 +26,8 @@ async fn main() {
 }
 
 async fn run() -> Result<()> {
-    let app_config = AppConfig::load()?;
-    configure_logging(
-        app_config.log_level.as_deref().unwrap_or("info"),
-        &app_config.logging_dir,
-    )?;
+    let app_config = AppConfig::new()?;
+    configure_logging(&app_config.log_level, &app_config.logging_dir)?;
     let mut dns_server = DnsServer::new(
         app_config.port,
         &app_config.records_file,
