@@ -58,7 +58,13 @@ impl<'a> Application<'a> {
             tray_app: None,
             notification_tx,
             app_config,
-            startup_menu: CheckMenuItem::with_id(STARTUP_ID, "Startup at Login", true, start_flag, None),
+            startup_menu: CheckMenuItem::with_id(
+                STARTUP_ID,
+                "Startup at Login",
+                true,
+                start_flag,
+                None,
+            ),
         }
     }
 

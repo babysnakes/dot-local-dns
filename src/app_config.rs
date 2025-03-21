@@ -1,11 +1,11 @@
-use crate::shared::APP_NAME;
+use crate::shared::{APP_NAME, DEFAULT_RECORDS_FILE_NAME, DEFAULT_TOP_LEVEL_DOMAIN, LOGS_DIR_NAME};
 #[cfg_attr(test, allow(unused_imports))]
 use anyhow::{Context, Result};
+use log::debug;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
-use log::debug;
 
 #[derive(Deserialize, Serialize, Debug, PartialEq)]
 pub struct AppConfig {
@@ -70,10 +70,10 @@ impl AppConfig {
 
     fn generate(config_path: PathBuf, values: DynamicValues) -> Self {
         AppConfig {
-            top_level_domain: ".local".to_string(),
+            top_level_domain: DEFAULT_TOP_LEVEL_DOMAIN.to_string(),
             port: values.port,
             log_level: values.log_level,
-            logging_dir: values.config_dir.join("logs"),
+            logging_dir: values.config_dir.join(LOGS_DIR_NAME),
             records_file: values.records_file,
             start_at_login: false,
             config_revision: ConfigRevision { revision: 0 },
@@ -108,7 +108,7 @@ impl DynamicValues {
         let app_name = format!("{APP_NAME}-dev");
         Ok(Self {
             config_dir: app_config_dir()?.join(&app_name),
-            records_file: get_home_dir()?.join(".local-records-dev"),
+            records_file: get_home_dir()?.join(format!("{DEFAULT_RECORDS_FILE_NAME}-dev")),
             port: 2053,
             log_level: "debug".to_string(),
         })
@@ -118,7 +118,7 @@ impl DynamicValues {
     fn get() -> Result<Self> {
         Ok(Self {
             config_dir: app_config_dir()?.join(APP_NAME),
-            records_file: get_home_dir()?.join(".local-records"),
+            records_file: get_home_dir()?.join(DEFAULT_RECORDS_FILE_NAME),
             startup_dir: get_startup_dir()?,
             port: 53,
             log_level: "info".to_string(),
@@ -150,7 +150,10 @@ mod tests {
         assert_eq!(config.port, dv.port);
         assert_eq!(config.log_level, "info".to_string());
         assert_eq!(config.records_file, dv.records_file);
-        assert_eq!(config.top_level_domain, ".local".to_string());
+        assert_eq!(
+            config.top_level_domain,
+            DEFAULT_TOP_LEVEL_DOMAIN.to_string()
+        );
         assert_eq!(config.config_path, path);
     }
 
