@@ -26,7 +26,7 @@ async fn main() {
 }
 
 async fn run() -> Result<()> {
-    let app_config = AppConfig::new()?;
+    let mut app_config = AppConfig::new()?;
     configure_logging(&app_config.log_level, &app_config.logging_dir)?;
     let mut dns_server = DnsServer::new(
         app_config.port,
@@ -44,7 +44,7 @@ async fn run() -> Result<()> {
             _ = shutdown_proxy.send_event(UserEvent::Shutdown);
         });
     });
-    let mut app = Application::new(&event_loop, notify_tx, &app_config);
+    let mut app = Application::new(&event_loop, notify_tx, &mut app_config);
     event_loop.run_app(&mut app)?;
     Ok(())
 }

@@ -21,10 +21,12 @@ toml = "0.8"
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59.0", features = ["Win32_Networking_WinSock", "Win32_System_IO"] }
 windows-strings = "0.4"
+dirs-sys = "0.5.0"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["time"] }
 tempfile = "3"
+fake = "4"
 
 [build-dependencies]
 winres = "0.1"

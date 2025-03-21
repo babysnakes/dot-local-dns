@@ -8,7 +8,7 @@ use crate::shared::{
 use anyhow::{Error, Result};
 use log::{debug, error, info};
 use tokio::sync::mpsc::Sender;
-use tray_icon::menu::{AboutMetadata, AboutMetadataBuilder};
+use tray_icon::menu::{AboutMetadata, AboutMetadataBuilder, CheckMenuItem};
 use tray_icon::{
     menu::{Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem},
     TrayIcon, TrayIconBuilder,
@@ -24,13 +24,16 @@ use winit::{
 const QUIT_ID: &str = "quit";
 const RELOAD_ID: &str = "reload";
 const LOGS_ID: &str = "log_dir";
+const STARTUP_ID: &str = "startup";
 
 pub struct Application<'a> {
     tray_app: Option<TrayIcon>,
     notification_tx: Sender<Notification>,
-    app_config: &'a AppConfig,
+    app_config: &'a mut AppConfig,
+    startup_menu: CheckMenuItem,
 }
 
+#[derive(Debug)]
 pub(crate) enum UserEvent {
     MenuEvent(MenuEvent),
     Shutdown,
@@ -40,7 +43,7 @@ impl<'a> Application<'a> {
     pub fn new(
         event_loop: &EventLoop<UserEvent>,
         notification_tx: Sender<Notification>,
-        app_config: &'a AppConfig,
+        app_config: &'a mut AppConfig,
     ) -> Self {
         let proxy = event_loop.create_proxy();
         MenuEvent::set_event_handler(Some(move |event| {
@@ -50,17 +53,19 @@ impl<'a> Application<'a> {
                     notify_error!("Failed forwarding event: {e}");
                 });
         }));
+        let start_flag = app_config.start_at_login;
         Self {
             tray_app: None,
             notification_tx,
             app_config,
+            startup_menu: CheckMenuItem::with_id(STARTUP_ID, "Startup at Login", true, start_flag, None),
         }
     }
 
-    fn create_tray() -> TrayIcon {
+    fn create_tray(&self) -> TrayIcon {
         let icon_data = include_bytes!("../resources/Icon.png");
         let icon = load_icon(icon_data);
-        let menu = Self::create_menu();
+        let menu = self.create_menu();
 
         TrayIconBuilder::new()
             .with_menu(Box::new(menu))
@@ -73,7 +78,7 @@ impl<'a> Application<'a> {
             })
     }
 
-    fn create_menu() -> Menu {
+    fn create_menu(&self) -> Menu {
         let quit_i = MenuItem::with_id(QUIT_ID, "Quit", true, None);
         let reload_i = MenuItem::with_id(RELOAD_ID, "Reload Records", true, None);
         let logs_i = MenuItem::with_id(LOGS_ID, "Open Logs Directory", true, None);
@@ -81,6 +86,7 @@ impl<'a> Application<'a> {
             &PredefinedMenuItem::about("About".into(), Some(about_manifest())),
             &reload_i,
             &logs_i,
+            &self.startup_menu,
             &PredefinedMenuItem::separator(),
             &quit_i,
         ])
@@ -93,7 +99,7 @@ impl<'a> Application<'a> {
 impl ApplicationHandler<UserEvent> for Application<'_> {
     fn new_events(&mut self, _event_loop: &ActiveEventLoop, cause: StartCause) {
         if StartCause::Init == cause {
-            self.tray_app = Some(Self::create_tray());
+            self.tray_app = Some(self.create_tray());
         }
     }
 
@@ -125,6 +131,16 @@ impl ApplicationHandler<UserEvent> for Application<'_> {
                 if let Err(e) = open_path(&self.app_config.logging_dir) {
                     notify_error!("Error opening logs directory: {e}");
                 }
+            }
+            UserEvent::MenuEvent(MenuEvent { id: MenuId(id) }) if id == STARTUP_ID => {
+                let enabled = self.startup_menu.is_checked();
+                let verb = if enabled { "setting" } else { "disabling" };
+                self.app_config
+                    .set_start_at_login(enabled)
+                    .unwrap_or_else(|e| {
+                        error!("Error {verb} start at login: {e}");
+                        error_message(format!("Error {verb} start at login: {e}"));
+                    });
             }
             UserEvent::MenuEvent(_) => {}
             UserEvent::Shutdown => {
