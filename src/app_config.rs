@@ -119,7 +119,6 @@ impl DynamicValues {
         Ok(Self {
             config_dir: app_config_dir()?.join(APP_NAME),
             records_file: get_home_dir()?.join(DEFAULT_RECORDS_FILE_NAME),
-            startup_dir: get_startup_dir()?,
             port: 53,
             log_level: "info".to_string(),
         })

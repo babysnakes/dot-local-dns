@@ -1,4 +1,5 @@
 use crate::app_config::AppConfig;
+use crate::autolaunch_manager::AutoLaunchManager;
 use crate::dns::Notification;
 use crate::dns::Notification::{Reload, Shutdown};
 use crate::shared::{
@@ -31,6 +32,7 @@ pub struct Application<'a> {
     notification_tx: Sender<Notification>,
     app_config: &'a mut AppConfig,
     startup_menu: CheckMenuItem,
+    auto_launch_manager: &'a dyn AutoLaunchManager,
 }
 
 #[derive(Debug)]
@@ -44,7 +46,8 @@ impl<'a> Application<'a> {
         event_loop: &EventLoop<UserEvent>,
         notification_tx: Sender<Notification>,
         app_config: &'a mut AppConfig,
-    ) -> Self {
+        auto_launch_manager: &'a dyn AutoLaunchManager,
+    ) -> Result<Self> {
         let proxy = event_loop.create_proxy();
         MenuEvent::set_event_handler(Some(move |event| {
             proxy
@@ -54,7 +57,7 @@ impl<'a> Application<'a> {
                 });
         }));
         let start_flag = app_config.start_at_login;
-        Self {
+        let app = Self {
             tray_app: None,
             notification_tx,
             app_config,
@@ -65,7 +68,12 @@ impl<'a> Application<'a> {
                 start_flag,
                 None,
             ),
+            auto_launch_manager,
+        };
+        if start_flag != app.auto_launch_manager.is_enabled()? {
+            notify_user_about_mismatch_auto_launch(start_flag, !start_flag);
         }
+        Ok(app)
     }
 
     fn create_tray(&self) -> TrayIcon {
@@ -99,6 +107,15 @@ impl<'a> Application<'a> {
         .unwrap_or_else(|e| {
             panic_with_error!("Error creating menu: {e}");
         })
+    }
+
+    fn set_auto_launch(&mut self, launch: bool) -> Result<()> {
+        self.app_config.set_start_at_login(launch)?;
+        if launch {
+            self.auto_launch_manager.enable()
+        } else {
+            self.auto_launch_manager.disable()
+        }
     }
 }
 
@@ -141,12 +158,10 @@ impl ApplicationHandler<UserEvent> for Application<'_> {
             UserEvent::MenuEvent(MenuEvent { id: MenuId(id) }) if id == STARTUP_ID => {
                 let enabled = self.startup_menu.is_checked();
                 let verb = if enabled { "setting" } else { "disabling" };
-                self.app_config
-                    .set_start_at_login(enabled)
-                    .unwrap_or_else(|e| {
-                        error!("Error {verb} start at login: {e}");
-                        error_message(format!("Error {verb} start at login: {e}"));
-                    });
+                self.set_auto_launch(enabled).unwrap_or_else(|e| {
+                    error!("Error {verb} start at login: {e}");
+                    error_message(format!("Error {verb} start at login: {e}"));
+                });
             }
             UserEvent::MenuEvent(_) => {}
             UserEvent::Shutdown => {
@@ -192,7 +207,7 @@ fn load_rgba(resource: &[u8]) -> Result<(Vec<u8>, u32, u32)> {
     Ok((rgb.into_raw(), width, height))
 }
 
-pub fn about_manifest() -> AboutMetadata {
+fn about_manifest() -> AboutMetadata {
     let icon_data = include_bytes!("../resources/Icon.png");
     let icon = load_about_icon(icon_data);
     AboutMetadataBuilder::new()
@@ -200,4 +215,27 @@ pub fn about_manifest() -> AboutMetadata {
         .icon(icon)
         .version(Some(APP_VERSION))
         .build()
+}
+
+fn notify_user_about_mismatch_auto_launch(app: bool, system: bool) {
+    let tr = |b: bool| {
+        if b {
+            "enabled"
+        } else {
+            "disabled"
+        }
+    };
+    let in_app = tr(app);
+    let in_system = tr(system);
+    let msg = format!(
+        concat!(
+            "There is a mismatch in configured starting at login between the application ",
+            r#"({}) and the system ({})!"#,
+            "\n\nPlease configure the application (via menu) to match the system settings and then",
+            "try to set it again."
+        ),
+        in_app, in_system,
+    );
+
+    error_message(msg);
 }
