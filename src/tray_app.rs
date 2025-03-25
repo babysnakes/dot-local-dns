@@ -72,6 +72,8 @@ impl<'a> Application<'a> {
         };
         if start_flag != app.auto_launch_manager.is_enabled()? {
             notify_user_about_mismatch_auto_launch(start_flag, !start_flag);
+            app.app_config.set_start_at_login(!start_flag)?;
+            app.startup_menu.set_checked(!start_flag);
         }
         Ok(app)
     }
@@ -231,10 +233,10 @@ fn notify_user_about_mismatch_auto_launch(app: bool, system: bool) {
         concat!(
             "There is a mismatch in configured starting at login between the application ",
             r#"({}) and the system ({})!"#,
-            "\n\nPlease configure the application (via menu) to match the system settings and then",
-            "try to set it again."
+            "\n\nWe've set the application to match the system settings ({}). You can set it to",
+            "your liking using the menu in the system tray."
         ),
-        in_app, in_system,
+        in_app, in_system, in_system
     );
 
     error_message(msg);
