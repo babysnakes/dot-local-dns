@@ -6,8 +6,11 @@ use crate::shared::{
     error_message, notify_error, open_path, panic_with_error, send_notification, APP_NAME,
     APP_VERSION,
 };
-use anyhow::{Error, Result};
+use anyhow::{Context, Error, Result};
 use log::{debug, error, info};
+use std::fs::File;
+use std::io::Write;
+use std::path::PathBuf;
 use tokio::sync::mpsc::Sender;
 use tray_icon::menu::{AboutMetadata, AboutMetadataBuilder, CheckMenuItem};
 use tray_icon::{
@@ -26,6 +29,7 @@ const QUIT_ID: &str = "quit";
 const RELOAD_ID: &str = "reload";
 const LOGS_ID: &str = "log_dir";
 const STARTUP_ID: &str = "startup";
+const RECORDS_ID: &str = "edit_records";
 
 pub struct Application<'a> {
     tray_app: Option<TrayIcon>,
@@ -98,9 +102,11 @@ impl<'a> Application<'a> {
         let quit_i = MenuItem::with_id(QUIT_ID, "Quit", true, None);
         let reload_i = MenuItem::with_id(RELOAD_ID, "Reload Records", true, None);
         let logs_i = MenuItem::with_id(LOGS_ID, "Open Logs Directory", true, None);
+        let records_i = MenuItem::with_id(RECORDS_ID, "Edit Records File", true, None);
         Menu::with_items(&[
             &PredefinedMenuItem::about("About".into(), Some(about_manifest())),
             &reload_i,
+            &records_i,
             &logs_i,
             &self.startup_menu,
             &PredefinedMenuItem::separator(),
@@ -164,6 +170,15 @@ impl ApplicationHandler<UserEvent> for Application<'_> {
                     error!("Error {verb} start at login: {e}");
                     error_message(format!("Error {verb} start at login: {e}"));
                 });
+            }
+            UserEvent::MenuEvent(MenuEvent { id: MenuId(id) }) if id == RECORDS_ID => {
+                debug!("Edit records file");
+                if let Err(e) =
+                    safe_open_file(&self.app_config.records_file).context("opening records file")
+                {
+                    error!("Error: {e:#}");
+                    error_message(format!("Error: {e:#}"));
+                }
             }
             UserEvent::MenuEvent(_) => {}
             UserEvent::Shutdown => {
@@ -240,4 +255,18 @@ fn notify_user_about_mismatch_auto_launch(app: bool, system: bool) {
     );
 
     error_message(msg);
+}
+
+fn safe_open_file(f: &PathBuf) -> Result<()> {
+    if !f.exists() {
+        create_records_file(f)?;
+    }
+    open_path(f)
+}
+
+fn create_records_file(f: &PathBuf) -> Result<()> {
+    let msg = include_bytes!("../resources/records.txt");
+    let mut file = File::create(f)?;
+    file.write_all(msg)?;
+    Ok(())
 }

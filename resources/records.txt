@@ -1,0 +1,8 @@
+# DotLocal-DNS records file
+#
+# Valid syntax:
+#   each line should either:
+#   - Start with a '#' symbol (which means this line is ignored
+#   - <hostname>:<ipaddress> # (without spaces)
+# This nest line is a sample, please change it
+demohost.local:127.0.0.1
