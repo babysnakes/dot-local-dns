@@ -37,7 +37,7 @@ This will open the records text file - follow the instructions in the file for a
 
 ### Installation
 
-Check the instructions in the [Releases](./releases) page and continue
+Check the instructions in the [Releases](https://github.com/babysnakes/dot-local-dns/releases) page and continue
 to [configuring your system](#configure-your-system-to-use-dotlocal-dns).
 
 ### Configure Your System to Use DotLocal-DNS
