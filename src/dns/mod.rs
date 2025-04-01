@@ -79,7 +79,9 @@ impl DnsServer {
                             },
                             Notification::Reload => {
                                 info!("Reloading Records");
-                                self.reload_records().await.unwrap_or_else(|e| {
+                                self.reload_records().await
+                                .inspect(|()| send_notification("Reloaded Records", "Reloaded records file successfully"))
+                                .unwrap_or_else(|e| {
                                     let path = &self.db_path.to_string_lossy();
                                     notify_error!("Error reloading records file ({path}): {e}");
                                 });
