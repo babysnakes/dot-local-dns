@@ -1,20 +1,23 @@
-use crate::app_config::AppConfig;
-use crate::autolaunch_manager::AutoLaunchManager;
-use crate::dns::Notification;
-use crate::dns::Notification::{Reload, Shutdown};
-use crate::shared::{
-    error_message, notify_error, open_path, panic_with_error, send_notification, APP_NAME,
-    APP_VERSION,
+use crate::{
+    app_config::AppConfig,
+    autolaunch_manager::AutoLaunchManager,
+    dns::{
+        safe_open_records_file, Notification,
+        Notification::{Reload, Shutdown},
+    },
+    shared::{
+        error_message, notify_error, open_path, panic_with_error, send_notification, APP_NAME,
+        APP_VERSION,
+    },
 };
 use anyhow::{Context, Error, Result};
 use log::{debug, error, info};
-use std::fs::File;
-use std::io::Write;
-use std::path::PathBuf;
 use tokio::sync::mpsc::Sender;
-use tray_icon::menu::{AboutMetadata, AboutMetadataBuilder, CheckMenuItem};
 use tray_icon::{
-    menu::{Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem},
+    menu::{
+        AboutMetadata, AboutMetadataBuilder, CheckMenuItem, Menu, MenuEvent, MenuId, MenuItem,
+        PredefinedMenuItem,
+    },
     TrayIcon, TrayIconBuilder,
 };
 use winit::{
@@ -173,8 +176,8 @@ impl ApplicationHandler<UserEvent> for Application<'_> {
             }
             UserEvent::MenuEvent(MenuEvent { id: MenuId(id) }) if id == RECORDS_ID => {
                 debug!("Edit records file");
-                if let Err(e) =
-                    safe_open_file(&self.app_config.records_file).context("opening records file")
+                if let Err(e) = safe_open_records_file(&self.app_config.records_file)
+                    .context("opening records file")
                 {
                     error!("Error: {e:#}");
                     error_message(format!("Error: {e:#}"));
@@ -255,18 +258,4 @@ fn notify_user_about_mismatch_auto_launch(app: bool, system: bool) {
     );
 
     error_message(msg);
-}
-
-fn safe_open_file(f: &PathBuf) -> Result<()> {
-    if !f.exists() {
-        create_records_file(f)?;
-    }
-    open_path(f)
-}
-
-fn create_records_file(f: &PathBuf) -> Result<()> {
-    let msg = include_bytes!("../resources/records.txt");
-    let mut file = File::create(f)?;
-    file.write_all(msg)?;
-    Ok(())
 }

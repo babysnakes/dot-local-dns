@@ -1,8 +1,11 @@
+use crate::shared::open_path;
 use anyhow::{anyhow, Context, Result};
 use log::debug;
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::Write;
 use std::net::Ipv4Addr;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tokio::fs;
 
 pub type RecordsDB = HashMap<String, Ipv4Addr>;
@@ -13,7 +16,7 @@ pub type RecordsDB = HashMap<String, Ipv4Addr>;
 /// e.g.:
 ///
 /// zero.local:0.0.0.0
-pub async fn try_from_file(file: impl AsRef<Path>) -> Result<RecordsDB> {
+pub async fn load(file: impl AsRef<Path>) -> Result<RecordsDB> {
     if fs::try_exists(&file).await? {
         load_from_file(file).await
     } else {
@@ -54,4 +57,18 @@ fn parse_line(line: &str) -> Result<(String, Ipv4Addr)> {
     let name = parts.next().ok_or(anyhow!("Missing hostname"))?;
     let ip: Ipv4Addr = parts.next().ok_or(anyhow!("Missing IP"))?.parse()?;
     Ok((name.to_owned(), ip))
+}
+
+pub fn safe_open_records_file(f: &PathBuf) -> Result<()> {
+    if !f.exists() {
+        create_records_file(f)?;
+    }
+    open_path(f)
+}
+
+fn create_records_file(f: impl AsRef<Path>) -> Result<()> {
+    let msg = include_bytes!("../../resources/records.txt");
+    let mut file = File::create(f)?;
+    file.write_all(msg)?;
+    Ok(())
 }

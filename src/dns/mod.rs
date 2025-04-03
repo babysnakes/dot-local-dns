@@ -9,6 +9,7 @@ use failsafe::futures::CircuitBreaker;
 use failsafe::Config;
 use log::{debug, error, info, trace, warn};
 use protocol::*;
+pub use records::safe_open_records_file;
 use std::collections::HashMap;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
@@ -45,7 +46,7 @@ pub enum Notification {
 impl DnsServer {
     pub async fn new(port: u16, db_path: impl AsRef<Path>, top_level_domain: &str) -> Result<Self> {
         let db_path = db_path.as_ref().to_owned();
-        let records = records::try_from_file(&db_path).await?;
+        let records = records::load(&db_path).await?;
         let (notify_tx, notify_rx) = mpsc::channel::<Notification>(1);
         let (lookup_tx, lookup_rx) = mpsc::channel::<LookupChannel>(4);
         Ok(Self {

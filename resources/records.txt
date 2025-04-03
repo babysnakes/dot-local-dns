@@ -2,7 +2,11 @@
 #
 # Valid syntax:
 #   each line should either:
-#   - Start with a '#' symbol (which means this line is ignored
-#   - <hostname>:<ipaddress> # (without spaces)
-# This nest line is a sample, please change it
-demohost.local:127.0.0.1
+#   - Start with a '#' symbol (which means th is line is ignored)
+#   - <hostname>:<ipaddress> # spaces around or between are illegal
+#   - An empty line without any characters or whitespaces
+#
+# Any line that doesn't match one of the rules above will cause the application to fail!
+#
+# This next line is a sample, feel free to change/delete it
+demo-host.local:127.0.0.1

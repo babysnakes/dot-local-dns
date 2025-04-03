@@ -106,9 +106,11 @@ impl DynamicValues {
     #[cfg(debug_assertions)]
     fn get() -> Result<Self> {
         let app_name = format!("{APP_NAME}-dev");
+        let config_dir = app_config_dir()?.join(&app_name);
+        let records_file = config_dir.join(DEFAULT_RECORDS_FILE_NAME);
         Ok(Self {
-            config_dir: app_config_dir()?.join(&app_name),
-            records_file: get_home_dir()?.join(format!("{DEFAULT_RECORDS_FILE_NAME}-dev")),
+            config_dir,
+            records_file,
             port: 2053,
             log_level: "debug".to_string(),
         })
@@ -116,9 +118,11 @@ impl DynamicValues {
 
     #[cfg(not(debug_assertions))]
     fn get() -> Result<Self> {
+        let config_dir = app_config_dir()?.join(APP_NAME);
+        let records_file = config_dir.join(DEFAULT_RECORDS_FILE_NAME);
         Ok(Self {
-            config_dir: app_config_dir()?.join(APP_NAME),
-            records_file: get_home_dir()?.join(DEFAULT_RECORDS_FILE_NAME),
+            config_dir,
+            records_file,
             port: 53,
             log_level: "info".to_string(),
         })
@@ -127,11 +131,6 @@ impl DynamicValues {
 
 pub fn app_config_dir() -> Result<PathBuf> {
     dirs::config_dir().with_context(|| "Could not find config directory")
-}
-
-// Safeguard against test going amok.
-pub fn get_home_dir() -> Result<PathBuf> {
-    dirs::home_dir().with_context(|| "Failed to get home directory")
 }
 
 #[cfg(test)]
