@@ -38,6 +38,7 @@ pub enum Notification {
     Shutdown,
     Reload,
     ARecordQuery(String, oneshot::Sender<Result<Ipv4Addr>>),
+    MergeRecords(PathBuf, oneshot::Sender<Result<()>>),
 }
 
 impl DnsServer {
@@ -119,6 +120,21 @@ impl DnsServer {
                 self.handle_name_lookup(query, tx);
                 None
             }
+            Notification::MergeRecords(path, tx) => {
+                match self.handle_merge_records(path).await {
+                    Ok(()) => {
+                        if tx.send(Ok(())).is_err() {
+                            notify_error!("Records merged but encountered internal communication error, best to restart the app");
+                        }
+                    }
+                    Err(e) => {
+                        tx.send(Err(e)).unwrap_or_else(|e| {
+                            notify_error!("Error merging records: {e:?}");
+                        });
+                    }
+                }
+                None
+            }
         }
     }
 
@@ -146,6 +162,13 @@ impl DnsServer {
         if tx.send(res).is_err() {
             error!("Error sending response to lookup channel");
         }
+    }
+
+    async fn handle_merge_records(&mut self, path: PathBuf) -> Result<()> {
+        info!("DNS server received merge records from file: {path:?}");
+        let records = records::load_from_file(path).await?;
+        self.records.extend(records);
+        Ok(())
     }
 
     fn lookup_name(&self, host: String) -> Result<Ipv4Addr> {
@@ -265,12 +288,16 @@ async fn mk_udp_socket(addr: &SocketAddr) -> std::io::Result<UdpSocket> {
 #[cfg(test)]
 mod tests {
     use super::protocol::*;
-    use super::DnsServer;
+    use super::{DnsServer, Notification};
     use crate::dns::records::RecordsDB;
-    use crate::dns::Notification::{ARecordQuery, Reload, Shutdown};
+    use crate::dns::Notification::{ARecordQuery, MergeRecords, Reload, Shutdown};
     use std::collections::HashMap;
+    use std::io::Write;
     use std::net::Ipv4Addr;
+    use std::str::FromStr;
+    use tempfile::NamedTempFile;
     use tokio::join;
+    use tokio::sync::mpsc::Sender;
     use tokio::sync::oneshot;
     use tokio::time::{sleep, timeout, Duration};
 
@@ -436,7 +463,6 @@ mod tests {
 
     #[tokio::test]
     async fn reloading_records_updates_live_service() {
-        use std::io::Write;
         use tempfile::NamedTempFile;
         timeout(Duration::from_secs(1), async {
             let host = "test-host.local".to_owned();
@@ -468,6 +494,36 @@ mod tests {
         .unwrap(); // panic on timeout
     }
 
+    #[rustfmt::skip]
+    #[tokio::test]
+    async fn merge_records_workflow() {
+        let records = "a.host.local:192.168.0.4\r\nb-host.local:192.168.0.4";
+        let to_merge = "c.host.local:192.168.1.1\r\nb-host.local:192.168.1.1";
+        let mut records_file = NamedTempFile::new().unwrap();
+        writeln!(records_file, "{records}").unwrap();
+        let mut merged_file = NamedTempFile::new().unwrap();
+        writeln!(merged_file, "{to_merge}").unwrap();
+        let mut dns = DnsServer::new(0, records_file.path(), TOP_LEVEL).await.unwrap();
+        let notification_tx = dns.notify_tx.clone();
+        timeout(Duration::from_secs(3), async {
+            let ((), dns_out) = join!(
+                async move {
+                    let (tx1, rx1) = oneshot::channel();
+                    notification_tx.send(MergeRecords(merged_file.path().into(), tx1)).await.unwrap();
+                    rx1.await.unwrap().unwrap(); // panic if it's error
+                    assert_eq!(run_lookup("a.host.local", notification_tx.clone()).await.unwrap(), Ipv4Addr::from_str("192.168.0.4").unwrap(), "records-only host should remain the same");
+                    assert_eq!(run_lookup("b-host.local", notification_tx.clone()).await.unwrap(), Ipv4Addr::from_str("192.168.1.1").unwrap(), "merge should overwrite original");
+                    assert_eq!(run_lookup("c.host.local", notification_tx.clone()).await.unwrap(), Ipv4Addr::from_str("192.168.1.1").unwrap(), "merge only host should resolve");
+                    notification_tx.send(Reload).await.unwrap();
+                    assert_eq!(run_lookup("b-host.local", notification_tx.clone()).await.unwrap(), Ipv4Addr::from_str("192.168.0.4").unwrap(), "after reset original host should resolve to original ip");
+                    notification_tx.send(Shutdown).await.unwrap();
+                },
+                dns.run(),
+            );
+            dns_out.unwrap();
+        }).await.unwrap();
+    }
+
     async fn basic_query_and_validation(
         query: DnsPacket,
         result: ResultCode,
@@ -492,5 +548,11 @@ mod tests {
         packet.header.id = 10;
         packet.questions.push(DnsQuestion::new(name, query_type));
         packet.clone()
+    }
+
+    async fn run_lookup(host: &str, notify_tx: Sender<Notification>) -> anyhow::Result<Ipv4Addr> {
+        let (tx, rx) = oneshot::channel();
+        notify_tx.send(ARecordQuery(host.into(), tx)).await?;
+        rx.await?
     }
 }

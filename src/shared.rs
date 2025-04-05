@@ -39,6 +39,7 @@ pub fn send_notification(summary: &str, body: &str) {
         .unwrap_or_else(|e| error!("{}", e));
 }
 
+#[cfg(target_os = "windows")]
 pub fn error_message(body: String) {
     use windows_strings::HSTRING;
     use windows_sys::Win32::UI::WindowsAndMessaging::{
@@ -52,6 +53,23 @@ pub fn error_message(body: String) {
             HSTRING::from(body).as_ptr(),
             HSTRING::from(title).as_ptr(),
             MB_OK | MB_ICONERROR | MB_TOPMOST | MB_SYSTEMMODAL,
+        );
+    });
+}
+
+#[cfg(target_os = "windows")]
+pub fn info_message(title: String, body: String) {
+    use windows_strings::HSTRING;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        MessageBoxW, MB_ICONINFORMATION, MB_OK, MB_SYSTEMMODAL, MB_TOPMOST,
+    };
+
+    tokio::task::spawn_blocking(move || unsafe {
+        MessageBoxW(
+            0 as _,
+            HSTRING::from(body).as_ptr(),
+            HSTRING::from(title).as_ptr(),
+            MB_OK | MB_ICONINFORMATION | MB_TOPMOST | MB_SYSTEMMODAL,
         );
     });
 }

@@ -1,34 +1,25 @@
-use crate::{
-    app_config::AppConfig,
-    autolaunch_manager::AutoLaunchManager,
-    dns::{
-        safe_open_records_file, Notification,
-        Notification::{ARecordQuery, Reload, Shutdown},
-    },
-    shared::{
-        error_message, notify_error, open_path, panic_with_error, send_notification, APP_NAME,
-        APP_VERSION,
-    },
+use crate::app_config::AppConfig;
+use crate::autolaunch_manager::AutoLaunchManager;
+use crate::dns::safe_open_records_file;
+use crate::dns::Notification::{self, ARecordQuery, MergeRecords, Reload, Shutdown};
+use crate::shared::{
+    error_message, info_message, notify_error, open_path, panic_with_error, send_notification,
+    APP_NAME, APP_VERSION,
 };
 use anyhow::{Context, Error, Result};
 use log::{debug, error, info};
 use std::net::Ipv4Addr;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::oneshot;
-use tray_icon::{
-    menu::{
-        AboutMetadata, AboutMetadataBuilder, CheckMenuItem, Menu, MenuEvent, MenuId, MenuItem,
-        PredefinedMenuItem,
-    },
-    TrayIcon, TrayIconBuilder,
+use tray_icon::menu::{
+    AboutMetadata, AboutMetadataBuilder, CheckMenuItem, Menu, MenuEvent, MenuId, MenuItem,
+    PredefinedMenuItem,
 };
-use winit::{
-    application::ApplicationHandler,
-    event::{StartCause, WindowEvent},
-    event_loop::ActiveEventLoop,
-    event_loop::EventLoop,
-    window::WindowId,
-};
+use tray_icon::{TrayIcon, TrayIconBuilder};
+use winit::application::ApplicationHandler;
+use winit::event::{StartCause, WindowEvent};
+use winit::event_loop::{ActiveEventLoop, EventLoop};
+use winit::window::WindowId;
 
 const QUIT_ID: &str = "quit";
 const RELOAD_ID: &str = "reload";
@@ -36,6 +27,7 @@ const LOGS_ID: &str = "log_dir";
 const STARTUP_ID: &str = "startup";
 const RECORDS_ID: &str = "edit_records";
 const LOOKUP_ID: &str = "lookup";
+const MERGE_ID: &str = "merge";
 
 pub struct Application<'a> {
     tray_app: Option<TrayIcon>,
@@ -110,8 +102,10 @@ impl<'a> Application<'a> {
         let logs_i = MenuItem::with_id(LOGS_ID, "Open Logs Directory", true, None);
         let records_i = MenuItem::with_id(RECORDS_ID, "Edit Records File", true, None);
         let lookup_i = MenuItem::with_id(LOOKUP_ID, "Verify Host Lookup", true, None);
+        let merge_i = MenuItem::with_id(MERGE_ID, "Temporarily Merge Records", true, None);
         Menu::with_items(&[
             &records_i,
+            &merge_i,
             &reload_i,
             &PredefinedMenuItem::separator(),
             &lookup_i,
@@ -135,18 +129,18 @@ impl<'a> Application<'a> {
         }
     }
 
+    #[cfg(target_os = "windows")]
     fn handle_lookup_request(&self) {
-        use tinyfiledialogs::{input_box, message_box_ok, MessageBoxIcon};
+        use tinyfiledialogs::input_box;
 
         let notification_tx = self.notification_tx.clone();
         let msg = format!("Enter a hostname you want verify the address of (should be a valid hostname in the {} domain):", self.app_config.top_level_domain);
         if let Some(search_host) = input_box("Verify Host Lookup", &msg, "") {
             tokio::spawn(async move {
                 match lookup(search_host.clone(), notification_tx).await {
-                    Ok(ip) => message_box_ok(
-                        "Lookup Result",
-                        &format!("Lookup resolved to: {ip}"),
-                        MessageBoxIcon::Info,
+                    Ok(ip) => info_message(
+                        "Lookup Result".to_owned(),
+                        format!("Lookup resolved to: {ip}"),
                     ),
                     Err(e) => {
                         error_message(format!("Couldn't resolve host '{search_host}': {e:#}"));
@@ -212,6 +206,15 @@ impl ApplicationHandler<UserEvent> for Application<'_> {
             }
             UserEvent::MenuEvent(MenuEvent { id: MenuId(id) }) if id == LOOKUP_ID => {
                 self.handle_lookup_request();
+            }
+            UserEvent::MenuEvent(MenuEvent { id: MenuId(id) }) if id == MERGE_ID => {
+                let tx = self.notification_tx.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = handle_merge_request(tx).await {
+                        error!("Error: {e:#}");
+                        error_message(format!("Error: {e:#}"));
+                    }
+                });
             }
             UserEvent::MenuEvent(_) => {}
             UserEvent::Shutdown => {
@@ -297,4 +300,27 @@ async fn lookup(host: String, notification_tx: Sender<Notification>) -> Result<I
         .await
         .context("sending request channel")?;
     rx.await?
+}
+
+#[cfg(target_os = "windows")]
+async fn handle_merge_request(notify_tx: Sender<Notification>) -> Result<()> {
+    let home = dirs::home_dir().context("Couldn't get home directory")?;
+    let home_str = home
+        .to_str()
+        .context("Couldn't convert home directory to string")?;
+    if let Some(path) = tinyfiledialogs::open_file_dialog("Open Records file", home_str, None) {
+        let (tx, rx) = oneshot::channel();
+        notify_tx
+            .send(MergeRecords(path.into(), tx))
+            .await
+            .context("Sending merge notification")?;
+        rx.await?
+            .inspect(|()| {
+                info_message(
+                    "Merge Records Succeeded".to_owned(),
+                    "Successfully merged records. This will hold until you Reload the records or restart the application.".to_owned(),
+                );
+            })?;
+    };
+    Ok(())
 }
