@@ -2,10 +2,8 @@ use crate::{
     app_config::AppConfig,
     autolaunch_manager::AutoLaunchManager,
     dns::{
-        safe_open_records_file, LookupChannel,
-        LookupChannel::ARecordQuery,
-        Notification,
-        Notification::{Reload, Shutdown},
+        safe_open_records_file, Notification,
+        Notification::{ARecordQuery, Reload, Shutdown},
     },
     shared::{
         error_message, notify_error, open_path, panic_with_error, send_notification, APP_NAME,
@@ -42,7 +40,6 @@ const LOOKUP_ID: &str = "lookup";
 pub struct Application<'a> {
     tray_app: Option<TrayIcon>,
     notification_tx: Sender<Notification>,
-    lookup_tx: Sender<LookupChannel>,
     app_config: &'a mut AppConfig,
     startup_menu: CheckMenuItem,
     auto_launch_manager: &'a dyn AutoLaunchManager,
@@ -58,7 +55,6 @@ impl<'a> Application<'a> {
     pub fn new(
         event_loop: &EventLoop<UserEvent>,
         notification_tx: Sender<Notification>,
-        lookup_tx: Sender<LookupChannel>,
         app_config: &'a mut AppConfig,
         auto_launch_manager: &'a dyn AutoLaunchManager,
     ) -> Result<Self> {
@@ -74,7 +70,6 @@ impl<'a> Application<'a> {
         let app = Self {
             tray_app: None,
             notification_tx,
-            lookup_tx,
             app_config,
             startup_menu: CheckMenuItem::with_id(
                 STARTUP_ID,
@@ -143,11 +138,11 @@ impl<'a> Application<'a> {
     fn handle_lookup_request(&self) {
         use tinyfiledialogs::{input_box, message_box_ok, MessageBoxIcon};
 
-        let lookup_tx = self.lookup_tx.clone();
+        let notification_tx = self.notification_tx.clone();
         let msg = format!("Enter a hostname you want verify the address of (should be a valid hostname in the {} domain):", self.app_config.top_level_domain);
         if let Some(search_host) = input_box("Verify Host Lookup", &msg, "") {
             tokio::spawn(async move {
-                match lookup(search_host.clone(), lookup_tx).await {
+                match lookup(search_host.clone(), notification_tx).await {
                     Ok(ip) => message_box_ok(
                         "Lookup Result",
                         &format!("Lookup resolved to: {ip}"),
@@ -294,9 +289,9 @@ fn notify_user_about_mismatch_auto_launch(app: bool, system: bool) {
 
     error_message(msg);
 }
-async fn lookup(host: String, lookup_tx: Sender<LookupChannel>) -> Result<Ipv4Addr> {
+async fn lookup(host: String, notification_tx: Sender<Notification>) -> Result<Ipv4Addr> {
     let (tx, rx) = oneshot::channel();
-    lookup_tx
+    notification_tx
         .clone()
         .send(ARecordQuery(host, tx))
         .await

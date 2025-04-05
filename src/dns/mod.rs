@@ -22,40 +22,36 @@ use windows_sys::Win32::Foundation::{BOOL, FALSE};
 pub struct DnsServer {
     top_level_domain: String,
     pub notify_tx: Sender<Notification>,
-    pub lookup_tx: Sender<LookupChannel>,
     port: u16,
     db_path: PathBuf,
     records: HashMap<String, Ipv4Addr>,
     notify_rx: Receiver<Notification>,
-    lookup_rx: Receiver<LookupChannel>,
 }
 
 #[derive(Debug)]
-pub enum LookupChannel {
-    ARecordQuery(String, oneshot::Sender<Result<Ipv4Addr>>),
+enum Signal {
+    Shutdown,
 }
 
 #[derive(Debug)]
 pub enum Notification {
     Shutdown,
     Reload,
+    ARecordQuery(String, oneshot::Sender<Result<Ipv4Addr>>),
 }
 
 impl DnsServer {
     pub async fn new(port: u16, db_path: impl AsRef<Path>, top_level_domain: &str) -> Result<Self> {
         let db_path = db_path.as_ref().to_owned();
         let records = records::load(&db_path).await?;
-        let (notify_tx, notify_rx) = mpsc::channel::<Notification>(1);
-        let (lookup_tx, lookup_rx) = mpsc::channel::<LookupChannel>(4);
+        let (notify_tx, notify_rx) = mpsc::channel::<Notification>(4);
         Ok(Self {
             top_level_domain: top_level_domain.to_owned(),
             notify_tx,
-            lookup_tx,
             port,
             db_path,
             records,
             notify_rx,
-            lookup_rx,
         })
     }
 
@@ -71,25 +67,10 @@ impl DnsServer {
                 notification = self.notify_rx.recv() => {
                     debug!("DNS server received notification: {notification:?}");
                     if let Some(notification) = notification {
-                        match notification {
-                            Notification::Shutdown => {
-                                info!("DNS server received shutdown");
-                                return Ok(());
-                            },
-                            Notification::Reload => {
-                                info!("Reloading Records");
-                                self.reload_records().await
-                                .inspect(|()| send_notification("Reloaded Records", "Reloaded records file successfully"))
-                                .unwrap_or_else(|e| {
-                                    let path = &self.db_path.to_string_lossy();
-                                    notify_error!("Error reloading records file ({path}): {e}");
-                                });
-                            }
+                        if let Some(Signal::Shutdown) = self.handle_notification(notification).await {
+                            return Ok(());
                         }
                     }
-                }
-                message = self.lookup_rx.recv() => {
-                    self.handle_name_lookup(message);
                 }
                 received = socket.recv_from(&mut req_buffer.buf) => {
                     let handler = self.handle_request(received, &mut req_buffer, &socket);
@@ -115,6 +96,32 @@ impl DnsServer {
         Ok(())
     }
 
+    async fn handle_notification(&mut self, notification: Notification) -> Option<Signal> {
+        match notification {
+            Notification::Shutdown => {
+                info!("DNS server received shutdown");
+                Some(Signal::Shutdown)
+            }
+            Notification::Reload => {
+                info!("Reloading Records");
+                self.reload_records()
+                    .await
+                    .inspect(|()| {
+                        send_notification("Reloaded Records", "Reloaded records file successfully");
+                    })
+                    .unwrap_or_else(|e| {
+                        let path = &self.db_path.to_string_lossy();
+                        notify_error!("Error reloading records file ({path}): {e}");
+                    });
+                None
+            }
+            Notification::ARecordQuery(query, tx) => {
+                self.handle_name_lookup(query, tx);
+                None
+            }
+        }
+    }
+
     #[allow(clippy::similar_names)]
     async fn handle_request(
         &mut self,
@@ -133,13 +140,11 @@ impl DnsServer {
         Ok(())
     }
 
-    fn handle_name_lookup(&self, message: Option<LookupChannel>) {
-        debug!("DNS server received lookup channel: {message:?}");
-        if let Some(LookupChannel::ARecordQuery(host, tx)) = message {
-            let res = self.lookup_name(host);
-            if tx.send(res).is_err() {
-                error!("Error sending response to lookup channel");
-            }
+    fn handle_name_lookup(&self, host: String, tx: oneshot::Sender<Result<Ipv4Addr>>) {
+        debug!("DNS server received lookup channel: {host}");
+        let res = self.lookup_name(host);
+        if tx.send(res).is_err() {
+            error!("Error sending response to lookup channel");
         }
     }
 
@@ -262,8 +267,7 @@ mod tests {
     use super::protocol::*;
     use super::DnsServer;
     use crate::dns::records::RecordsDB;
-    use crate::dns::LookupChannel::ARecordQuery;
-    use crate::dns::Notification::{Reload, Shutdown};
+    use crate::dns::Notification::{ARecordQuery, Reload, Shutdown};
     use std::collections::HashMap;
     use std::net::Ipv4Addr;
     use tokio::join;
@@ -442,17 +446,16 @@ mod tests {
                 .await
                 .unwrap();
             let notify_tx = dns.notify_tx.clone();
-            let lookup_tx = dns.lookup_tx.clone();
             let ((), dns_out) = join!(
                 async move {
                     let (tx1, rx2) = oneshot::channel();
-                    let _ = lookup_tx.send(ARecordQuery(host.clone(), tx1)).await;
+                    let _ = notify_tx.send(ARecordQuery(host.clone(), tx1)).await;
                     let ip1 = rx2.await.unwrap().unwrap();
                     assert_eq!(ip1, Ipv4Addr::LOCALHOST);
                     _ = notify_tx.send(Reload).await;
                     writeln!(records_file, "{host}:192.168.0.1").unwrap();
                     let (tx2, rx2) = oneshot::channel();
-                    let _ = lookup_tx.send(ARecordQuery(host, tx2)).await;
+                    let _ = notify_tx.send(ARecordQuery(host, tx2)).await;
                     let ip2 = rx2.await.unwrap().unwrap();
                     assert_eq!(ip2, "192.168.0.1".parse::<Ipv4Addr>().unwrap());
                     notify_tx.send(Shutdown).await.unwrap();
