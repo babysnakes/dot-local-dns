@@ -1,16 +1,4 @@
-use crate::app_config::AppConfig;
-use crate::autolaunch_manager::AutoLaunchManager;
-use crate::dns::safe_open_records_file;
-use crate::dns::Notification::{self, ARecordQuery, MergeRecords, Reload, Shutdown};
-use crate::shared::{
-    error_message, info_message, notify_error, open_path, panic_with_error, send_notification,
-    APP_NAME, APP_VERSION,
-};
-use anyhow::{Context, Error, Result};
-use log::{debug, error, info};
-use std::net::Ipv4Addr;
-use tokio::sync::mpsc::Sender;
-use tokio::sync::oneshot;
+use crate::prelude::*;
 use tray_icon::menu::{
     AboutMetadata, AboutMetadataBuilder, CheckMenuItem, Menu, MenuEvent, MenuId, MenuItem,
     PredefinedMenuItem,

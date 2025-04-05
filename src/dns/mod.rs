@@ -3,21 +3,13 @@
 mod protocol;
 mod records;
 
-use super::shared::*;
-use anyhow::{anyhow, Result};
+use crate::prelude::*;
 use failsafe::futures::CircuitBreaker;
 use failsafe::Config;
-use log::{debug, error, info, trace, warn};
 use protocol::*;
 pub use records::safe_open_records_file;
-use std::collections::HashMap;
-use std::net::{Ipv4Addr, SocketAddr};
-use std::path::{Path, PathBuf};
 use tokio::net::UdpSocket;
 use tokio::select;
-use tokio::sync::mpsc::{self, Receiver, Sender};
-use tokio::sync::oneshot;
-use windows_sys::Win32::Foundation::{BOOL, FALSE};
 
 pub struct DnsServer {
     top_level_domain: String,
@@ -99,11 +91,11 @@ impl DnsServer {
 
     async fn handle_notification(&mut self, notification: Notification) -> Option<Signal> {
         match notification {
-            Notification::Shutdown => {
+            Shutdown => {
                 info!("DNS server received shutdown");
                 Some(Signal::Shutdown)
             }
-            Notification::Reload => {
+            Reload => {
                 info!("Reloading Records");
                 self.reload_records()
                     .await
@@ -116,11 +108,11 @@ impl DnsServer {
                     });
                 None
             }
-            Notification::ARecordQuery(query, tx) => {
+            ARecordQuery(query, tx) => {
                 self.handle_name_lookup(query, tx);
                 None
             }
-            Notification::MergeRecords(path, tx) => {
+            MergeRecords(path, tx) => {
                 match self.handle_merge_records(path).await {
                     Ok(()) => {
                         if tx.send(Ok(())).is_err() {
@@ -258,6 +250,7 @@ async fn mk_udp_socket(addr: &SocketAddr) -> std::io::Result<UdpSocket> {
     use std::io::Error;
     use std::os::windows::io::AsRawSocket;
     use std::ptr::null_mut;
+    use windows_sys::Win32::Foundation::{BOOL, FALSE};
     use windows_sys::Win32::Networking::WinSock::{WSAIoctl, SIO_UDP_CONNRESET, SOCKET};
 
     let socket = UdpSocket::bind(addr).await?;
@@ -288,17 +281,11 @@ async fn mk_udp_socket(addr: &SocketAddr) -> std::io::Result<UdpSocket> {
 #[cfg(test)]
 mod tests {
     use super::protocol::*;
-    use super::{DnsServer, Notification};
     use crate::dns::records::RecordsDB;
-    use crate::dns::Notification::{ARecordQuery, MergeRecords, Reload, Shutdown};
-    use std::collections::HashMap;
-    use std::io::Write;
-    use std::net::Ipv4Addr;
+    use crate::prelude::*;
     use std::str::FromStr;
     use tempfile::NamedTempFile;
     use tokio::join;
-    use tokio::sync::mpsc::Sender;
-    use tokio::sync::oneshot;
     use tokio::time::{sleep, timeout, Duration};
 
     const TOP_LEVEL: &str = ".local";
@@ -550,7 +537,7 @@ mod tests {
         packet.clone()
     }
 
-    async fn run_lookup(host: &str, notify_tx: Sender<Notification>) -> anyhow::Result<Ipv4Addr> {
+    async fn run_lookup(host: &str, notify_tx: Sender<Notification>) -> Result<Ipv4Addr> {
         let (tx, rx) = oneshot::channel();
         notify_tx.send(ARecordQuery(host.into(), tx)).await?;
         rx.await?

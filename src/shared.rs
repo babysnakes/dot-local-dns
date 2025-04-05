@@ -1,7 +1,5 @@
-use anyhow::Result;
-use log::error;
+use crate::prelude::*;
 use notify_rust::Notification;
-use std::path::PathBuf;
 
 pub const APP_NAME: &str = "DotLocal-DNS";
 pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");

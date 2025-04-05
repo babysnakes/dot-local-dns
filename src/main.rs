@@ -2,22 +2,35 @@
 #![warn(clippy::pedantic)]
 #![allow(clippy::enum_glob_use)]
 
-use crate::app_config::AppConfig;
-use crate::autolaunch_manager::mk_auto_launch;
-use crate::dns::DnsServer;
-use crate::logging::configure_logging;
-use crate::shared::error_message;
-use crate::tray_app::{Application, UserEvent};
-use anyhow::{Context, Result};
-use log::error;
-use winit::event_loop::EventLoop;
-
 mod app_config;
 mod autolaunch_manager;
 mod dns;
 mod logging;
 mod shared;
 mod tray_app;
+
+mod prelude {
+    pub(crate) use crate::app_config::AppConfig;
+    pub(crate) use crate::autolaunch_manager::{mk_auto_launch, AutoLaunchManager};
+    pub(crate) use crate::dns::safe_open_records_file;
+    pub(crate) use crate::dns::DnsServer;
+    pub(crate) use crate::dns::Notification::{self, ARecordQuery, MergeRecords, Reload, Shutdown};
+    pub(crate) use crate::logging::configure_logging;
+    pub(crate) use crate::shared::*;
+    pub(crate) use crate::tray_app::{Application, UserEvent};
+    pub(crate) use anyhow::{anyhow, Context, Error, Result};
+    pub(crate) use log::{debug, error, info, trace, warn};
+    pub(crate) use std::collections::HashMap;
+    pub(crate) use std::fs::{self, File};
+    pub(crate) use std::io::Write;
+    pub(crate) use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
+    pub(crate) use std::path::{Path, PathBuf};
+    pub(crate) use tokio::sync::mpsc::{self, Receiver, Sender};
+    pub(crate) use tokio::sync::oneshot;
+}
+
+use prelude::*;
+use winit::event_loop::EventLoop;
 
 #[tokio::main]
 async fn main() {

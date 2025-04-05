@@ -1,5 +1,4 @@
-use crate::shared::APP_NAME;
-use anyhow::{anyhow, Error, Result};
+use crate::prelude::*;
 use auto_launch::{AutoLaunch, AutoLaunchBuilder};
 
 pub trait AutoLaunchManager {

@@ -1,6 +1,5 @@
-use anyhow::Result;
+use crate::prelude::*;
 use flexi_logger::{detailed_format, Cleanup, Criterion, FileSpec, Logger, Naming};
-use std::path::PathBuf;
 
 pub fn configure_logging(log_level: &str, logging_dir: &PathBuf) -> Result<()> {
     if cfg!(debug_assertions) {

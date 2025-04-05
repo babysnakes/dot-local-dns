@@ -1,11 +1,6 @@
-use crate::shared::{APP_NAME, DEFAULT_RECORDS_FILE_NAME, DEFAULT_TOP_LEVEL_DOMAIN, LOGS_DIR_NAME};
+use crate::prelude::*;
 #[cfg_attr(test, allow(unused_imports))]
-use anyhow::{Context, Result};
-use log::debug;
 use serde::{Deserialize, Serialize};
-use std::fs;
-use std::io::Write;
-use std::path::PathBuf;
 
 #[derive(Deserialize, Serialize, Debug, PartialEq)]
 pub struct AppConfig {
