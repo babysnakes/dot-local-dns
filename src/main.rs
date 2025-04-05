@@ -38,6 +38,7 @@ async fn run() -> Result<()> {
     .await?;
     let event_loop = EventLoop::<UserEvent>::with_user_event().build()?;
     let notify_tx = dns_server.notify_tx.clone();
+    let lookup_tx = dns_server.lookup_tx.clone();
     let shutdown_proxy = event_loop.create_proxy();
     let auto = mk_auto_launch()?;
     tokio::spawn(async move {
@@ -47,7 +48,7 @@ async fn run() -> Result<()> {
             _ = shutdown_proxy.send_event(UserEvent::Shutdown);
         });
     });
-    let mut app = Application::new(&event_loop, notify_tx, &mut app_config, &auto)
+    let mut app = Application::new(&event_loop, notify_tx, lookup_tx, &mut app_config, &auto)
         .context("Creating system tray application")?;
     event_loop.run_app(&mut app)?;
     Ok(())

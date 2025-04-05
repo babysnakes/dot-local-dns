@@ -41,7 +41,9 @@ pub fn send_notification(summary: &str, body: &str) {
 
 pub fn error_message(body: String) {
     use windows_strings::HSTRING;
-    use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        MessageBoxW, MB_ICONERROR, MB_OK, MB_SYSTEMMODAL, MB_TOPMOST,
+    };
 
     let title = format!("{APP_NAME} Error");
     tokio::task::spawn_blocking(move || unsafe {
@@ -49,7 +51,7 @@ pub fn error_message(body: String) {
             0 as _,
             HSTRING::from(body).as_ptr(),
             HSTRING::from(title).as_ptr(),
-            MB_OK | MB_ICONERROR,
+            MB_OK | MB_ICONERROR | MB_TOPMOST | MB_SYSTEMMODAL,
         );
     });
 }

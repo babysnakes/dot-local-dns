@@ -2,7 +2,9 @@ use crate::{
     app_config::AppConfig,
     autolaunch_manager::AutoLaunchManager,
     dns::{
-        safe_open_records_file, Notification,
+        safe_open_records_file, LookupChannel,
+        LookupChannel::ARecordQuery,
+        Notification,
         Notification::{Reload, Shutdown},
     },
     shared::{
@@ -12,7 +14,9 @@ use crate::{
 };
 use anyhow::{Context, Error, Result};
 use log::{debug, error, info};
+use std::net::Ipv4Addr;
 use tokio::sync::mpsc::Sender;
+use tokio::sync::oneshot;
 use tray_icon::{
     menu::{
         AboutMetadata, AboutMetadataBuilder, CheckMenuItem, Menu, MenuEvent, MenuId, MenuItem,
@@ -33,10 +37,12 @@ const RELOAD_ID: &str = "reload";
 const LOGS_ID: &str = "log_dir";
 const STARTUP_ID: &str = "startup";
 const RECORDS_ID: &str = "edit_records";
+const LOOKUP_ID: &str = "lookup";
 
 pub struct Application<'a> {
     tray_app: Option<TrayIcon>,
     notification_tx: Sender<Notification>,
+    lookup_tx: Sender<LookupChannel>,
     app_config: &'a mut AppConfig,
     startup_menu: CheckMenuItem,
     auto_launch_manager: &'a dyn AutoLaunchManager,
@@ -52,6 +58,7 @@ impl<'a> Application<'a> {
     pub fn new(
         event_loop: &EventLoop<UserEvent>,
         notification_tx: Sender<Notification>,
+        lookup_tx: Sender<LookupChannel>,
         app_config: &'a mut AppConfig,
         auto_launch_manager: &'a dyn AutoLaunchManager,
     ) -> Result<Self> {
@@ -67,6 +74,7 @@ impl<'a> Application<'a> {
         let app = Self {
             tray_app: None,
             notification_tx,
+            lookup_tx,
             app_config,
             startup_menu: CheckMenuItem::with_id(
                 STARTUP_ID,
@@ -106,13 +114,16 @@ impl<'a> Application<'a> {
         let reload_i = MenuItem::with_id(RELOAD_ID, "Reload Records", true, None);
         let logs_i = MenuItem::with_id(LOGS_ID, "Open Logs Directory", true, None);
         let records_i = MenuItem::with_id(RECORDS_ID, "Edit Records File", true, None);
+        let lookup_i = MenuItem::with_id(LOOKUP_ID, "Verify Host Lookup", true, None);
         Menu::with_items(&[
-            &PredefinedMenuItem::about("About".into(), Some(about_manifest())),
-            &reload_i,
             &records_i,
+            &reload_i,
+            &PredefinedMenuItem::separator(),
+            &lookup_i,
             &logs_i,
             &self.startup_menu,
             &PredefinedMenuItem::separator(),
+            &PredefinedMenuItem::about("About".into(), Some(about_manifest())),
             &quit_i,
         ])
         .unwrap_or_else(|e| {
@@ -126,6 +137,27 @@ impl<'a> Application<'a> {
             self.auto_launch_manager.enable()
         } else {
             self.auto_launch_manager.disable()
+        }
+    }
+
+    fn handle_lookup_request(&self) {
+        use tinyfiledialogs::{input_box, message_box_ok, MessageBoxIcon};
+
+        let lookup_tx = self.lookup_tx.clone();
+        let msg = format!("Enter a hostname you want verify the address of (should be a valid hostname in the {} domain):", self.app_config.top_level_domain);
+        if let Some(search_host) = input_box("Verify Host Lookup", &msg, "") {
+            tokio::spawn(async move {
+                match lookup(search_host.clone(), lookup_tx).await {
+                    Ok(ip) => message_box_ok(
+                        "Lookup Result",
+                        &format!("Lookup resolved to: {ip}"),
+                        MessageBoxIcon::Info,
+                    ),
+                    Err(e) => {
+                        error_message(format!("Couldn't resolve host '{search_host}': {e:#}"));
+                    }
+                };
+            });
         }
     }
 }
@@ -182,6 +214,9 @@ impl ApplicationHandler<UserEvent> for Application<'_> {
                     error!("Error: {e:#}");
                     error_message(format!("Error: {e:#}"));
                 }
+            }
+            UserEvent::MenuEvent(MenuEvent { id: MenuId(id) }) if id == LOOKUP_ID => {
+                self.handle_lookup_request();
             }
             UserEvent::MenuEvent(_) => {}
             UserEvent::Shutdown => {
@@ -258,4 +293,13 @@ fn notify_user_about_mismatch_auto_launch(app: bool, system: bool) {
     );
 
     error_message(msg);
+}
+async fn lookup(host: String, lookup_tx: Sender<LookupChannel>) -> Result<Ipv4Addr> {
+    let (tx, rx) = oneshot::channel();
+    lookup_tx
+        .clone()
+        .send(ARecordQuery(host, tx))
+        .await
+        .context("sending request channel")?;
+    rx.await?
 }

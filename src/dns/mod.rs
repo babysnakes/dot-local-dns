@@ -22,7 +22,6 @@ use windows_sys::Win32::Foundation::{BOOL, FALSE};
 pub struct DnsServer {
     top_level_domain: String,
     pub notify_tx: Sender<Notification>,
-    #[allow(dead_code)] // todo: clear after actually using.
     pub lookup_tx: Sender<LookupChannel>,
     port: u16,
     db_path: PathBuf,
@@ -33,7 +32,6 @@ pub struct DnsServer {
 
 #[derive(Debug)]
 pub enum LookupChannel {
-    #[allow(dead_code)] // todo: clear after actually using.
     ARecordQuery(String, oneshot::Sender<Result<Ipv4Addr>>),
 }
 

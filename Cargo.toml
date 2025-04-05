@@ -18,6 +18,7 @@ open = "5.3.2"
 serde = { version = "1.0", features = ["derive"]}
 toml = "0.8"
 auto-launch = "0.5"
+tinyfiledialogs = "3.9"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59.0", features = ["Win32_Networking_WinSock", "Win32_System_IO"] }
