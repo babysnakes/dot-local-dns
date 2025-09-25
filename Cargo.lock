@@ -705,7 +705,7 @@ dependencies = [
  "tokio",
  "toml 0.9.7",
  "tray-icon",
- "windows-strings 0.4.2",
+ "windows-strings 0.5.0",
  "windows-sys 0.59.0",
  "winit",
  "winres",
