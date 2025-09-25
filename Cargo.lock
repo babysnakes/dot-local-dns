@@ -750,12 +750,11 @@ dependencies = [
 
 [[package]]
 name = "dot-local-dns"
-version = "0.2.0-beta"
+version = "0.2.1-beta"
 dependencies = [
  "anyhow",
  "auto-launch",
  "dirs 6.0.0",
- "dirs-sys 0.5.0",
  "failsafe",
  "fake",
  "flexi_logger",

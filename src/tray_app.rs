@@ -117,7 +117,6 @@ impl<'a> Application<'a> {
         }
     }
 
-    #[cfg(target_os = "windows")]
     fn handle_lookup_request(&self) {
         use tinyfiledialogs::input_box;
 
@@ -290,7 +289,6 @@ async fn lookup(host: String, notification_tx: Sender<Notification>) -> Result<I
     rx.await?
 }
 
-#[cfg(target_os = "windows")]
 async fn handle_merge_request(notify_tx: Sender<Notification>) -> Result<()> {
     let home = dirs::home_dir().context("Couldn't get home directory")?;
     let home_str = home

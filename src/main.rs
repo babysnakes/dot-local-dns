@@ -1,4 +1,3 @@
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![warn(clippy::pedantic)]
 #![allow(clippy::enum_glob_use)]
 
@@ -33,6 +32,7 @@ use prelude::*;
 use winit::event_loop::EventLoop;
 
 #[tokio::main]
+#[cfg(target_os = "windows")]
 async fn main() {
     if let Err(e) = run().await {
         error!("DNS server error: {}", e);

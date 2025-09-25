@@ -33,7 +33,6 @@ impl AutoLaunchManager for AutoLaunch {
     }
 }
 
-#[cfg(target_os = "windows")]
 pub fn mk_auto_launch() -> Result<AutoLaunch> {
     let exe_path =
         std::env::current_exe().map_err(|e| anyhow!("Error identifying application path: {e}"))?;

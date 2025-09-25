@@ -28,7 +28,6 @@ macro_rules! panic_with_error {
 pub(crate) use notify_error;
 pub(crate) use panic_with_error;
 
-#[cfg(target_os = "windows")]
 pub fn send_notification(summary: &str, body: &str) {
     Notification::new()
         .summary(summary)
@@ -37,7 +36,6 @@ pub fn send_notification(summary: &str, body: &str) {
         .unwrap_or_else(|e| error!("{}", e));
 }
 
-#[cfg(target_os = "windows")]
 pub fn error_message(body: String) {
     use windows_strings::HSTRING;
     use windows_sys::Win32::UI::WindowsAndMessaging::{
@@ -55,7 +53,6 @@ pub fn error_message(body: String) {
     });
 }
 
-#[cfg(target_os = "windows")]
 pub fn info_message(title: String, body: String) {
     use windows_strings::HSTRING;
     use windows_sys::Win32::UI::WindowsAndMessaging::{
