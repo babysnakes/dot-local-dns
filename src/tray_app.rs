@@ -1,4 +1,5 @@
 use crate::prelude::*;
+use tinyfiledialogs::input_box;
 use tray_icon::menu::{
     AboutMetadata, AboutMetadataBuilder, CheckMenuItem, Menu, MenuEvent, MenuId, MenuItem,
     PredefinedMenuItem,
@@ -118,8 +119,6 @@ impl<'a> Application<'a> {
     }
 
     fn handle_lookup_request(&self) {
-        use tinyfiledialogs::input_box;
-
         let notification_tx = self.notification_tx.clone();
         let msg = format!("Enter a hostname you want verify the address of (should be a valid hostname in the {} domain):", self.app_config.top_level_domain);
         if let Some(search_host) = input_box("Verify Host Lookup", &msg, "") {

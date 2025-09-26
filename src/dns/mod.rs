@@ -8,9 +8,14 @@ use failsafe::futures::CircuitBreaker;
 use failsafe::Config;
 use protocol::*;
 pub use records::safe_open_records_file;
+use std::io::Error;
+use std::os::windows::io::AsRawSocket;
+use std::ptr::null_mut;
 use tokio::net::UdpSocket;
 use tokio::select;
 use windows_sys::core::BOOL;
+use windows_sys::Win32::Foundation::FALSE;
+use windows_sys::Win32::Networking::WinSock::{WSAIoctl, SIO_UDP_CONNRESET, SOCKET};
 
 pub struct DnsServer {
     top_level_domain: String,
@@ -246,14 +251,7 @@ fn ip_from_domain_or_default(host: &str, domain: &HashMap<String, Ipv4Addr>) -> 
 }
 
 #[allow(clippy::cast_possible_truncation)]
-#[cfg(windows)]
 async fn mk_udp_socket(addr: &SocketAddr) -> std::io::Result<UdpSocket> {
-    use std::io::Error;
-    use std::os::windows::io::AsRawSocket;
-    use std::ptr::null_mut;
-    use windows_sys::Win32::Foundation::FALSE;
-    use windows_sys::Win32::Networking::WinSock::{WSAIoctl, SIO_UDP_CONNRESET, SOCKET};
-
     let socket = UdpSocket::bind(addr).await?;
     let handle = socket.as_raw_socket() as SOCKET;
     let mut enable: BOOL = FALSE;
@@ -451,7 +449,6 @@ mod tests {
 
     #[tokio::test]
     async fn reloading_records_updates_live_service() {
-        use tempfile::NamedTempFile;
         timeout(Duration::from_secs(1), async {
             let host = "test-host.local".to_owned();
             let mut records_file = NamedTempFile::new().unwrap();

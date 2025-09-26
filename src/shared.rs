@@ -1,5 +1,9 @@
 use crate::prelude::*;
 use notify_rust::Notification;
+use windows_strings::HSTRING;
+use windows_sys::Win32::UI::WindowsAndMessaging::{
+    MessageBoxW, MB_ICONERROR, MB_ICONINFORMATION, MB_OK, MB_SYSTEMMODAL, MB_TOPMOST,
+};
 
 pub const APP_NAME: &str = "DotLocal-DNS";
 pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -37,11 +41,6 @@ pub fn send_notification(summary: &str, body: &str) {
 }
 
 pub fn error_message(body: String) {
-    use windows_strings::HSTRING;
-    use windows_sys::Win32::UI::WindowsAndMessaging::{
-        MessageBoxW, MB_ICONERROR, MB_OK, MB_SYSTEMMODAL, MB_TOPMOST,
-    };
-
     let title = format!("{APP_NAME} Error");
     tokio::task::spawn_blocking(move || unsafe {
         MessageBoxW(
@@ -54,11 +53,6 @@ pub fn error_message(body: String) {
 }
 
 pub fn info_message(title: String, body: String) {
-    use windows_strings::HSTRING;
-    use windows_sys::Win32::UI::WindowsAndMessaging::{
-        MessageBoxW, MB_ICONINFORMATION, MB_OK, MB_SYSTEMMODAL, MB_TOPMOST,
-    };
-
     tokio::task::spawn_blocking(move || unsafe {
         MessageBoxW(
             0 as _,
