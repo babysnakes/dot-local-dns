@@ -10,6 +10,7 @@ use protocol::*;
 pub use records::safe_open_records_file;
 use tokio::net::UdpSocket;
 use tokio::select;
+use windows_sys::core::BOOL;
 
 pub struct DnsServer {
     top_level_domain: String,
@@ -250,7 +251,7 @@ async fn mk_udp_socket(addr: &SocketAddr) -> std::io::Result<UdpSocket> {
     use std::io::Error;
     use std::os::windows::io::AsRawSocket;
     use std::ptr::null_mut;
-    use windows_sys::Win32::Foundation::{BOOL, FALSE};
+    use windows_sys::Win32::Foundation::FALSE;
     use windows_sys::Win32::Networking::WinSock::{WSAIoctl, SIO_UDP_CONNRESET, SOCKET};
 
     let socket = UdpSocket::bind(addr).await?;
