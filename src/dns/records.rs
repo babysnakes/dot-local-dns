@@ -25,13 +25,13 @@ pub async fn load(file: impl AsRef<Path>) -> Result<RecordsDB> {
 ///
 /// zero.local:0.0.0.0
 pub async fn load_from_file(file: impl AsRef<Path>) -> Result<RecordsDB> {
-    debug!("Loading records from file: {:?}", file.as_ref());
+    debug!("Loading records from file: {}", file.as_ref().display());
     let contents = fs::read_to_string(&file).await?;
     let mut records = HashMap::new();
     for line in contents.lines() {
         match line {
-            "" => continue,
-            s if s.starts_with('#') => continue,
+            "" => (),
+            s if s.starts_with('#') => (),
             s => {
                 let (name, ip) = parse_line(s).context(format!("trying to parse '{s}'"))?;
                 if records.contains_key(&name) {

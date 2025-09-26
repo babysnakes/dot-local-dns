@@ -91,7 +91,7 @@ impl AppConfig {
             "# The only field that is somewhat safe to edit is the log_level which accepts one of (error, warn, info, debug, trace)",
             config_str,
         );
-        let mut file = fs::File::create(&self.config_path)?;
+        let mut file = File::create(&self.config_path)?;
         file.write_all(with_comments.as_bytes())?;
         Ok(())
     }

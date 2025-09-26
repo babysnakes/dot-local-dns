@@ -37,7 +37,7 @@ pub fn send_notification(summary: &str, body: &str) {
         .summary(summary)
         .body(body)
         .show()
-        .unwrap_or_else(|e| error!("{}", e));
+        .unwrap_or_else(|e| error!("{e}"));
 }
 
 pub fn error_message(body: String) {

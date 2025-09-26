@@ -131,7 +131,7 @@ impl<'a> Application<'a> {
                     Err(e) => {
                         error_message(format!("Couldn't resolve host '{search_host}': {e:#}"));
                     }
-                };
+                }
             });
         }
     }
@@ -306,6 +306,6 @@ async fn handle_merge_request(notify_tx: Sender<Notification>) -> Result<()> {
                     "Successfully merged records. This will hold until you Reload the records or restart the application.".to_owned(),
                 );
             })?;
-    };
+    }
     Ok(())
 }

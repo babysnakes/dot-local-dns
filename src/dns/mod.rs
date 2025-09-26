@@ -163,7 +163,10 @@ impl DnsServer {
     }
 
     async fn handle_merge_records(&mut self, path: PathBuf) -> Result<()> {
-        info!("DNS server received merge records from file: {path:?}");
+        info!(
+            "DNS server received merge records from file: {}",
+            path.display()
+        );
         let records = records::load_from_file(path).await?;
         self.records.extend(records);
         Ok(())
@@ -264,7 +267,7 @@ async fn mk_udp_socket(addr: &SocketAddr) -> std::io::Result<UdpSocket> {
             size_of_val(&enable) as _,
             null_mut(),
             0,
-            &mut bytes_returned,
+            &raw mut bytes_returned,
             null_mut(),
             None,
         )
@@ -276,7 +279,6 @@ async fn mk_udp_socket(addr: &SocketAddr) -> std::io::Result<UdpSocket> {
     Ok(socket)
 }
 
-#[allow(clippy::match_on_vec_items)]
 #[cfg(test)]
 mod tests {
     use super::protocol::*;

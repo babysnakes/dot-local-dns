@@ -35,7 +35,7 @@ use winit::event_loop::EventLoop;
 #[cfg(target_os = "windows")]
 async fn main() {
     if let Err(e) = run().await {
-        error!("DNS server error: {}", e);
+        error!("DNS server error: {e}");
         error_message(format!("{e}"));
     }
 }
@@ -55,7 +55,7 @@ async fn run() -> Result<()> {
     let auto = mk_auto_launch()?;
     tokio::spawn(async move {
         dns_server.run().await.unwrap_or_else(|e| {
-            error!("DNS server error: {}", e);
+            error!("DNS server error: {e}");
             error_message(format!("{e}"));
             _ = shutdown_proxy.send_event(UserEvent::Shutdown);
         });
