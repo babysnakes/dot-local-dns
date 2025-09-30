@@ -21,11 +21,16 @@ auto-launch = "0.5"
 tinyfiledialogs = "3.9"
 windows-sys = { version = "0.61.1", features = ["Win32_Networking_WinSock", "Win32_System_IO", "Win32_UI_WindowsAndMessaging"] }
 windows-strings = "0.5.0"
+regex = "1.11.3"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["time"] }
 tempfile = "3"
 fake = "4"
+clap = { version = "4", features = ["derive"]}
+rand = "0.9"
+rand_regex = "0.18"
+hickory-resolver = "0.25"
 
 [build-dependencies]
 winres = "0.1"
