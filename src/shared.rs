@@ -7,7 +7,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 
 pub const APP_NAME: &str = "DotLocal-DNS";
 pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
-pub const DEFAULT_TOP_LEVEL_DOMAIN: &str = ".local";
+pub const DEFAULT_TOP_LEVEL_DOMAIN: &str = ".loc";
 pub const LOGS_DIR_NAME: &str = "logs";
 pub const DEFAULT_RECORDS_FILE_NAME: &str = "records.txt";
 

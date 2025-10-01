@@ -14,7 +14,7 @@ use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 #[derive(Parser)]
 struct Args {
     /// The top-level domain to generate hosts for
-    #[arg(long, default_value = "local")]
+    #[arg(long, default_value = "loc")]
     domain: String,
     /// Number of requests to send
     #[arg(long, short, default_value = "1000")]

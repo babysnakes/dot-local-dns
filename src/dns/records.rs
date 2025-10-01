@@ -4,11 +4,11 @@ use tokio::fs;
 pub type RecordsDB = HashMap<String, Ipv4Addr>;
 
 /// Load the records from the supplied file path. The format of the file is lines of name to IPv4.
-/// Name must end with .local. Returns empty [`RecordsDB`] if file does not exist.
+/// Name must end with .loc. Returns empty [`RecordsDB`] if file does not exist.
 ///
 /// e.g.:
 ///
-/// zero.local:0.0.0.0
+/// zero.loc:0.0.0.0
 pub async fn load(file: impl AsRef<Path>) -> Result<RecordsDB> {
     if fs::try_exists(&file).await? {
         load_from_file(file).await
@@ -19,11 +19,11 @@ pub async fn load(file: impl AsRef<Path>) -> Result<RecordsDB> {
 }
 
 /// Load the records from the supplied file path. The format of the file is lines of name to IPv4.
-/// Name must end with .local. Returns error if file does not exist.
+/// Name must end with .loc. Returns error if file does not exist.
 ///
 /// e.g.:
 ///
-/// zero.local:0.0.0.0
+/// zero.loc:0.0.0.0
 pub async fn load_from_file(file: impl AsRef<Path>) -> Result<RecordsDB> {
     debug!("Loading records from file: {}", file.as_ref().display());
     let contents = fs::read_to_string(&file).await?;

@@ -9,4 +9,4 @@
 # Any line that doesn't match one of the rules above will cause the application to fail!
 #
 # This next line is a sample, feel free to change/delete it
-demo-host.local:127.0.0.1
+demo-host.loc:127.0.0.1

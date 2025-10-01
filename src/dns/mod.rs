@@ -289,22 +289,22 @@ mod tests {
     use tokio::join;
     use tokio::time::{sleep, timeout, Duration};
 
-    const TOP_LEVEL: &str = ".local";
+    const TOP_LEVEL: &str = ".loc";
 
     #[tokio::test]
     async fn normal_dns_request() {
-        let mut query = packet_with_question("hello.local".to_string(), QueryType::A);
+        let mut query = packet_with_question("hello.loc".to_string(), QueryType::A);
         query.header.recursion_desired = true;
         let response = basic_query_and_validation(query, ResultCode::NOERROR, records()).await;
         assert!(response.header.recursion_desired);
         assert_eq!(
-            response.questions[0].name, "hello.local",
+            response.questions[0].name, "hello.loc",
             "response question's name doesn't match original name"
         );
         assert_eq!(
             response.answers[0],
             DnsRecord::A {
-                domain: "hello.local".to_string(),
+                domain: "hello.loc".to_string(),
                 addr: Ipv4Addr::LOCALHOST,
                 ttl: 0
             }
@@ -313,7 +313,7 @@ mod tests {
 
     #[tokio::test]
     async fn subdomain_a_requests_are_supported() {
-        let query = packet_with_question("sub.domain.local".to_string(), QueryType::A);
+        let query = packet_with_question("sub.domain.loc".to_string(), QueryType::A);
         let response = basic_query_and_validation(query, ResultCode::NOERROR, records()).await;
         match response.answers[0] {
             DnsRecord::A {
@@ -321,7 +321,7 @@ mod tests {
                 ref addr,
                 ..
             } => {
-                assert_eq!(domain, "sub.domain.local");
+                assert_eq!(domain, "sub.domain.loc");
                 assert_eq!(*addr, Ipv4Addr::LOCALHOST);
             }
             _ => panic!(
@@ -333,7 +333,7 @@ mod tests {
 
     #[tokio::test]
     async fn query_of_existing_record_returns_the_record() {
-        let query = packet_with_question("registered.local".to_string(), QueryType::A);
+        let query = packet_with_question("registered.loc".to_string(), QueryType::A);
         let response = basic_query_and_validation(query, ResultCode::NOERROR, records()).await;
         match response.answers[0] {
             DnsRecord::A {
@@ -341,7 +341,7 @@ mod tests {
                 ref addr,
                 ..
             } => {
-                assert_eq!(domain, "registered.local");
+                assert_eq!(domain, "registered.loc");
                 assert_eq!(*addr, "192.168.0.1".parse::<Ipv4Addr>().unwrap());
             }
             _ => panic!(
@@ -353,7 +353,7 @@ mod tests {
 
     #[tokio::test]
     async fn query_subdomain_of_existing_record_returns_the_record() {
-        let query = packet_with_question("sub.registered.local".to_string(), QueryType::A);
+        let query = packet_with_question("sub.registered.loc".to_string(), QueryType::A);
         let response = basic_query_and_validation(query, ResultCode::NOERROR, records()).await;
         match response.answers[0] {
             DnsRecord::A {
@@ -361,7 +361,7 @@ mod tests {
                 ref addr,
                 ..
             } => {
-                assert_eq!(domain, "sub.registered.local");
+                assert_eq!(domain, "sub.registered.loc");
                 assert_eq!(*addr, "192.168.0.1".parse::<Ipv4Addr>().unwrap());
             }
             _ => panic!(
@@ -373,7 +373,7 @@ mod tests {
 
     #[tokio::test]
     async fn query_name_that_ends_with_existing_record_returns_localhost() {
-        let query = packet_with_question("not-registered.local".to_string(), QueryType::A);
+        let query = packet_with_question("not-registered.loc".to_string(), QueryType::A);
         let response = basic_query_and_validation(query, ResultCode::NOERROR, records()).await;
         match response.answers[0] {
             DnsRecord::A {
@@ -381,7 +381,7 @@ mod tests {
                 ref addr,
                 ..
             } => {
-                assert_eq!(domain, "not-registered.local");
+                assert_eq!(domain, "not-registered.loc");
                 assert_eq!(*addr, Ipv4Addr::LOCALHOST);
             }
             _ => panic!(
@@ -393,14 +393,14 @@ mod tests {
 
     #[tokio::test]
     async fn soa_requests_return_no_error_and_zero_answers() {
-        let query = packet_with_question("test.local".to_string(), QueryType::SOA);
+        let query = packet_with_question("test.loc".to_string(), QueryType::SOA);
         let response = basic_query_and_validation(query, ResultCode::NOERROR, records()).await;
         assert_eq!(response.answers.len(), 0);
     }
 
     #[tokio::test]
     async fn ns_requests_return_no_error_and_zero_answers() {
-        let query = packet_with_question("test.local".to_string(), QueryType::NS);
+        let query = packet_with_question("test.loc".to_string(), QueryType::NS);
         let response = basic_query_and_validation(query, ResultCode::NOERROR, records()).await;
         assert_eq!(response.answers.len(), 0);
     }
@@ -414,14 +414,14 @@ mod tests {
 
     #[tokio::test]
     async fn response_packets_are_not_supported() {
-        let mut query = packet_with_question("test.local".to_string(), QueryType::A);
+        let mut query = packet_with_question("test.loc".to_string(), QueryType::A);
         query.header.response = true;
         basic_query_and_validation(query, ResultCode::NOTIMP, records()).await;
     }
 
     #[tokio::test]
     async fn non_zero_opcode_are_not_supported() {
-        let mut query = packet_with_question("test.local".to_string(), QueryType::A);
+        let mut query = packet_with_question("test.loc".to_string(), QueryType::A);
         query.header.opcode = 1;
         basic_query_and_validation(query, ResultCode::NOTIMP, records()).await;
     }
@@ -452,7 +452,7 @@ mod tests {
     #[tokio::test]
     async fn reloading_records_updates_live_service() {
         timeout(Duration::from_secs(1), async {
-            let host = "test-host.local".to_owned();
+            let host = "test-host.loc".to_owned();
             let mut records_file = NamedTempFile::new().unwrap();
             writeln!(records_file, "# comment").unwrap();
             let mut dns = DnsServer::new(0, records_file.path(), TOP_LEVEL)
@@ -484,8 +484,8 @@ mod tests {
     #[rustfmt::skip]
     #[tokio::test]
     async fn merge_records_workflow() {
-        let records = "a.host.local:192.168.0.4\r\nb-host.local:192.168.0.4";
-        let to_merge = "c.host.local:192.168.1.1\r\nb-host.local:192.168.1.1";
+        let records = "a.host.loc:192.168.0.4\r\nb-host.loc:192.168.0.4";
+        let to_merge = "c.host.loc:192.168.1.1\r\nb-host.loc:192.168.1.1";
         let mut records_file = NamedTempFile::new().unwrap();
         writeln!(records_file, "{records}").unwrap();
         let mut merged_file = NamedTempFile::new().unwrap();
@@ -498,11 +498,11 @@ mod tests {
                     let (tx1, rx1) = oneshot::channel();
                     notification_tx.send(MergeRecords(merged_file.path().into(), tx1)).await.unwrap();
                     rx1.await.unwrap().unwrap(); // panic if it's error
-                    assert_eq!(run_lookup("a.host.local", notification_tx.clone()).await.unwrap(), Ipv4Addr::from_str("192.168.0.4").unwrap(), "records-only host should remain the same");
-                    assert_eq!(run_lookup("b-host.local", notification_tx.clone()).await.unwrap(), Ipv4Addr::from_str("192.168.1.1").unwrap(), "merge should overwrite original");
-                    assert_eq!(run_lookup("c.host.local", notification_tx.clone()).await.unwrap(), Ipv4Addr::from_str("192.168.1.1").unwrap(), "merge only host should resolve");
+                    assert_eq!(run_lookup("a.host.loc", notification_tx.clone()).await.unwrap(), Ipv4Addr::from_str("192.168.0.4").unwrap(), "records-only host should remain the same");
+                    assert_eq!(run_lookup("b-host.loc", notification_tx.clone()).await.unwrap(), Ipv4Addr::from_str("192.168.1.1").unwrap(), "merge should overwrite original");
+                    assert_eq!(run_lookup("c.host.loc", notification_tx.clone()).await.unwrap(), Ipv4Addr::from_str("192.168.1.1").unwrap(), "merge only host should resolve");
                     notification_tx.send(Reload).await.unwrap();
-                    assert_eq!(run_lookup("b-host.local", notification_tx.clone()).await.unwrap(), Ipv4Addr::from_str("192.168.0.4").unwrap(), "after reset original host should resolve to original ip");
+                    assert_eq!(run_lookup("b-host.loc", notification_tx.clone()).await.unwrap(), Ipv4Addr::from_str("192.168.0.4").unwrap(), "after reset original host should resolve to original ip");
                     notification_tx.send(Shutdown).await.unwrap();
                 },
                 dns.run(),
@@ -527,7 +527,7 @@ mod tests {
     }
 
     fn records() -> HashMap<String, Ipv4Addr> {
-        HashMap::from([("registered.local".into(), "192.168.0.1".parse().unwrap())])
+        HashMap::from([("registered.loc".into(), "192.168.0.1".parse().unwrap())])
     }
 
     fn packet_with_question(name: String, query_type: QueryType) -> DnsPacket {

@@ -1,6 +1,6 @@
-## A Local Dns Server that Resolves "**.local" Addresses
+## A Local Dns Server that Resolves "**.loc" Addresses
 
-This is a system tray icon application that resolves DNS queries of an illegal `*.local` domain to either `localhost` or
+This is a system tray icon application that resolves DNS queries of an illegal `*.loc` domain to either `localhost` or
 to configured addresses. Currently, it only supports _Windows_ (I should add _macOS_ support soon).
 
 > This app is very much a work-in-progress and everything can be changed on every release.
@@ -20,7 +20,7 @@ combinations, which means adding them to your hosts file.
 
 You may also want to access other local services (e.g., NAS shares) by name rather than by IP address.
 
-That's where DotLocal-DNS comes in. By default, it resolves any hostname ending in .local (e.g., nas.local) to
+That's where DotLocal-DNS comes in. By default, it resolves any hostname ending in .loc (e.g., nas.loc) to
 127.0.0.1. You can also configure specific hosts to resolve to custom IP addresses, making local access easier and more
 intuitive.
 
@@ -30,7 +30,7 @@ After [installing](#installation) the app and running it you probably want to pe
 
 * Click on the tray icon and toggle the _Startup at Login_ menu.
 * [Configure your system](#configure-your-system-to-use-dotlocal-dns) to use _DotLocal-DNS_ to query hosts ending with
-  _.local_.
+  _.loc_.
 
 If you want to define custom addresses (e.g., to access your NAS) click the tray icon and select _Edit Records File_.
 This will open the records text file - follow the instructions in the file for adding records.
@@ -45,7 +45,7 @@ to [configuring your system](#configure-your-system-to-use-dotlocal-dns).
 Open _PowerShell_ console **as administrator** and run:
 
 ```powershell
-Add-DnsClientNrptRule -Namespace ".local" -NameServers "127.0.0.1"
+Add-DnsClientNrptRule -Namespace ".loc" -NameServers "127.0.0.1"
 ```
 
 To verify that the rule is accepted run:
@@ -56,7 +56,7 @@ pwsh  Get-DnsClientNrptRule
 
 Name                             : { EE27567A-76D5-4AF1-B446-A44CFCB1CC66 }
 Version                          : 2
-Namespace                        : { .local }
+Namespace                        : { .loc }
 IPsecCARestriction               :
 DirectAccessDnsServers           :
 DirectAccessEnabled              : False
@@ -79,7 +79,7 @@ Comment                          :
 If you want to remove the app run the following command:
 
 ```powershell
-Get-DnsClientNrptRule | Where-Object { $_.Namespace -eq ".local" } | Remove-DnsClientNrptRule
+Get-DnsClientNrptRule | Where-Object { $_.Namespace -eq ".loc" } | Remove-DnsClientNrptRule
 ```
 
 You should be prompted to approve deleting the rule. If something goes wrong you can run the `Get-nsClientNrptRule`
