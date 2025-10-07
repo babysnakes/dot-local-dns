@@ -42,7 +42,7 @@ pub enum Notification {
 impl DnsServer {
     pub async fn new(port: u16, db_path: impl AsRef<Path>, top_level_domain: &str) -> Result<Self> {
         let db_path = db_path.as_ref().to_owned();
-        let records = records::load(&db_path).await?;
+        let records = records::load(&db_path, top_level_domain).await?;
         let (notify_tx, notify_rx) = mpsc::channel::<Notification>(4);
         Ok(Self {
             top_level_domain: top_level_domain.to_owned(),
@@ -89,7 +89,7 @@ impl DnsServer {
     }
 
     async fn reload_records(&mut self) -> Result<()> {
-        let records = records::load_from_file(&self.db_path).await?;
+        let records = records::load_from_file(&self.db_path, &self.top_level_domain).await?;
         self.records = records;
         info!("Records reloaded");
         Ok(())
@@ -167,7 +167,7 @@ impl DnsServer {
             "DNS server received merge records from file: {}",
             path.display()
         );
-        let records = records::load_from_file(path).await?;
+        let records = records::load_from_file(path, &self.top_level_domain).await?;
         self.records.extend(records);
         Ok(())
     }

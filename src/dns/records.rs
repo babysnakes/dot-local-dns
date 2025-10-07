@@ -9,9 +9,9 @@ pub type RecordsDB = HashMap<String, Ipv4Addr>;
 /// e.g.:
 ///
 /// zero.loc:0.0.0.0
-pub async fn load(file: impl AsRef<Path>) -> Result<RecordsDB> {
+pub async fn load(file: impl AsRef<Path>, tld: &str) -> Result<RecordsDB> {
     if fs::try_exists(&file).await? {
-        load_from_file(file).await
+        load_from_file(file, tld).await
     } else {
         debug!("Using empty records");
         Ok(HashMap::new())
@@ -24,7 +24,7 @@ pub async fn load(file: impl AsRef<Path>) -> Result<RecordsDB> {
 /// e.g.:
 ///
 /// zero.loc:0.0.0.0
-pub async fn load_from_file(file: impl AsRef<Path>) -> Result<RecordsDB> {
+pub async fn load_from_file(file: impl AsRef<Path>, tld: &str) -> Result<RecordsDB> {
     debug!("Loading records from file: {}", file.as_ref().display());
     let contents = fs::read_to_string(&file).await?;
     let mut records = HashMap::new();
@@ -36,6 +36,13 @@ pub async fn load_from_file(file: impl AsRef<Path>) -> Result<RecordsDB> {
                 let (name, ip) = parse_line(s).context(format!("trying to parse '{s}'"))?;
                 if records.contains_key(&name) {
                     return Err(anyhow!("Duplicate hostname: {name}"));
+                }
+                if !name.ends_with(tld) {
+                    send_notification(
+                        "Invalid record in records file",
+                        &format!("Invalid TopLevelDomain in: {name}"),
+                    );
+                    continue;
                 }
                 records.insert(name, ip);
             }
@@ -64,4 +71,22 @@ fn create_records_file(f: impl AsRef<Path>) -> Result<()> {
     let mut file = File::create(f)?;
     file.write_all(msg)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::NamedTempFile;
+
+    #[tokio::test]
+    async fn ignore_invalid_top_level_domains() {
+        let records_contents = "hello.loc:127.0.0.1\nhello.com:127.0.0.1\n";
+        let mut file = NamedTempFile::new().unwrap();
+        file.write_all(records_contents.as_bytes()).unwrap();
+        let records = load_from_file(file.path(), "loc").await.unwrap();
+        assert!(
+            !records.contains_key("hello.com"),
+            "hello.com should not be in records"
+        );
+    }
 }

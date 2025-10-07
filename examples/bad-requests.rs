@@ -1,6 +1,6 @@
+use clap::Parser;
 use std::io;
 use tokio::net::UdpSocket;
-use clap::Parser;
 
 /// Send UDP packets with the specified size to the default development port
 #[derive(Parser)]
@@ -8,7 +8,7 @@ struct Args {
     /// Number of packets to send
     count: usize,
     /// Size of each packet in bytes
-    #[arg( default_value = "1")]
+    #[arg(default_value = "1")]
     packet_size: usize,
 }
 
