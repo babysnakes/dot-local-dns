@@ -35,7 +35,7 @@ pub async fn load_from_file(file: impl AsRef<Path>, tld: &str) -> Result<Records
             s => {
                 let (name, ip) = parse_line(s).context(format!("trying to parse '{s}'"))?;
                 if records.contains_key(&name) {
-                    return Err(anyhow!("Duplicate hostname: {name}"));
+                    handle_duplicate_hostname(&name, ip, &records)?;
                 }
                 if !name.ends_with(tld) {
                     send_notification(
@@ -57,6 +57,21 @@ fn parse_line(line: &str) -> Result<(String, Ipv4Addr)> {
     let name = parts.next().ok_or(anyhow!("Missing hostname"))?;
     let ip: Ipv4Addr = parts.next().ok_or(anyhow!("Missing IP"))?.parse()?;
     Ok((name.to_owned(), ip))
+}
+
+fn handle_duplicate_hostname(name: &str, ip: Ipv4Addr, records: &RecordsDB) -> Result<()> {
+    let existing_ip = records.get(name).unwrap(); // safe to unwrap because we just checked for existence
+    if existing_ip == &ip {
+        send_notification(
+            "Duplicate hostname in records file",
+            &format!("Duplicate hostname: {name} with IP {ip}"),
+        );
+        Ok(())
+    } else {
+        Err(anyhow!(
+            "Duplicate hostname ({name}) with different values is not supported!"
+        ))
+    }
 }
 
 pub fn safe_open_records_file(f: &PathBuf) -> Result<()> {
