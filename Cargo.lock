@@ -815,7 +815,7 @@ dependencies = [
 
 [[package]]
 name = "dot-local-dns"
-version = "0.2.1-beta"
+version = "0.2.2-beta"
 dependencies = [
  "anyhow",
  "auto-launch",
