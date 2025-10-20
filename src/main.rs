@@ -1,3 +1,4 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // Don't show console on Windows
 #![warn(clippy::pedantic)]
 #![allow(clippy::enum_glob_use)]
 
