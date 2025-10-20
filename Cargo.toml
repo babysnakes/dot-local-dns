@@ -8,7 +8,7 @@ tokio = { version = "1", features = ["rt", "fs", "net", "macros", "sync", "rt-mu
 anyhow = "1.0"
 dirs = "6"
 log = "0.4.26"
-flexi_logger = { version = "0.31.4", default-features = false }
+flexi_logger = { version = "0.31.7", default-features = false }
 image = "0.25.5"
 notify-rust = "4.11"
 tray-icon = { version = "0.21.1", default-features = false }
