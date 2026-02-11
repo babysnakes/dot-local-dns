@@ -6,6 +6,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 };
 
 pub const APP_NAME: &str = "DotLocal-DNS";
+pub const APP_IDENTIFIER: &str = "dev.babysnakes.dot-local-dns";
 pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const DEFAULT_TOP_LEVEL_DOMAIN: &str = ".loc";
 pub const LOGS_DIR_NAME: &str = "logs";
@@ -34,6 +35,7 @@ pub(crate) use panic_with_error;
 
 pub fn send_notification(summary: &str, body: &str) {
     Notification::new()
+        .app_id(APP_IDENTIFIER)
         .summary(summary)
         .body(body)
         .show()

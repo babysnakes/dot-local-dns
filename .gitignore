@@ -2,3 +2,4 @@
 /.idea/
 /dist/
 /examples/dataserde.rs
+/.claude/

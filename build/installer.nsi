@@ -642,6 +642,9 @@ Section Uninstall
   ; Remove desktop shortcuts
   Delete "$DESKTOP\${PRODUCTNAME}.lnk"
 
+  ; Remove AUMID registry key (written by the app at runtime to HKCU)
+  DeleteRegKey HKCU "Software\Classes\AppUserModelId\${IDENTIFIER}"
+
   ; Remove registry information for add/remove programs
   !if "${INSTALLMODE}" == "both"
     DeleteRegKey SHCTX "${UNINSTKEY}"

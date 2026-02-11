@@ -3,6 +3,7 @@
 #![allow(clippy::enum_glob_use)]
 
 mod app_config;
+mod aumid;
 mod autolaunch_manager;
 mod dns;
 mod logging;
@@ -42,6 +43,7 @@ async fn main() {
 }
 
 async fn run() -> Result<()> {
+    aumid::ensure_registered();
     let mut app_config = AppConfig::new()?;
     configure_logging(&app_config.log_level, &app_config.logging_dir)?;
     let mut dns_server = DnsServer::new(
