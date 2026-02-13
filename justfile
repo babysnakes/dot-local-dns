@@ -1,7 +1,10 @@
 set windows-shell := ["powershell.exe", "-NoLogo", "-Command"]
 
-# By default run test
-default:
+[private]
+@default:
+    echo ""
+    echo "Project tasks for DotLocal DNS"
+    echo ""
     just --list
 
 # Run project tests
