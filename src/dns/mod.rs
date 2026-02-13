@@ -227,7 +227,7 @@ impl DnsServer {
             QueryType::A => {
                 let record = DnsRecord::A {
                     addr: ip_from_domain_or_default(&query.name, &self.records),
-                    domain: query.name.to_string(),
+                    domain: query.name.clone(),
                     ttl: 0,
                 };
                 response.answers.push(record);

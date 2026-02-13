@@ -1,0 +1,31 @@
+name: Test DotLocal DNS
+
+on:
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+
+      - name: Install Just
+        uses: MinoruSekine/setup-scoop@v4.0.2
+        with:
+          apps: just
+
+      - name: Run CI tasks
+        run: just ci
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
