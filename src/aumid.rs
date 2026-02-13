@@ -41,10 +41,7 @@ fn find_icon() -> Option<PathBuf> {
         return Some(icon);
     }
     // Dev builds: exe is in target\debug, icon is in project root resources/
-    let project_icon = exe_dir
-        .parent()?
-        .parent()?
-        .join(r"resources\Icon.png");
+    let project_icon = exe_dir.parent()?.parent()?.join(r"resources\Icon.png");
     if project_icon.exists() {
         return Some(project_icon);
     }
