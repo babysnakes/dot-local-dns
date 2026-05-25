@@ -1,12 +1,11 @@
 use anyhow::{anyhow, Error};
 use clap::Parser;
-use hickory_resolver::config::{NameServerConfig, ResolverConfig};
-use hickory_resolver::name_server::{GenericConnector, TokioConnectionProvider};
-use hickory_resolver::proto::runtime::TokioRuntimeProvider;
+use hickory_resolver::config::{ConnectionConfig, NameServerConfig, ResolverConfig};
+use hickory_resolver::net::runtime::TokioRuntimeProvider;
 use hickory_resolver::Resolver;
 use rand::Rng;
 use rand_regex::Regex;
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::net::Ipv4Addr;
 
 /// Send multiple concurrent A record queries for generated hosts within the provided domain.
 ///
@@ -34,7 +33,7 @@ async fn run(args: Args) -> Result<(), Error> {
     // dbg!(sizes);
     let config = mk_resolver_config();
     let resolver =
-        Resolver::builder_with_config(config, TokioConnectionProvider::default()).build();
+        Resolver::builder_with_config(config, TokioRuntimeProvider::default()).build()?;
     tokio::try_join!(
         mk_resolver_worker(chunks[0], &resolver),
         mk_resolver_worker(chunks[1], &resolver),
@@ -46,7 +45,7 @@ async fn run(args: Args) -> Result<(), Error> {
 
 async fn mk_resolver_worker(
     hosts: &[String],
-    resolver: &Resolver<GenericConnector<TokioRuntimeProvider>>,
+    resolver: &Resolver<TokioRuntimeProvider>,
 ) -> Result<(), Error> {
     let resolver = resolver.clone();
     for host in hosts {
@@ -79,13 +78,8 @@ fn generate_hostname(domain: &str, samples: usize) -> Vec<String> {
 }
 
 fn mk_resolver_config() -> ResolverConfig {
-    let name_server = NameServerConfig {
-        socket_addr: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 2053)),
-        protocol: Default::default(),
-        tls_dns_name: None,
-        http_endpoint: None,
-        trust_negative_responses: false,
-        bind_addr: None,
-    };
+    let mut conn = ConnectionConfig::udp();
+    conn.port = 2053;
+    let name_server = NameServerConfig::new(Ipv4Addr::LOCALHOST.into(), false, vec![conn]);
     ResolverConfig::from_parts(None, vec![], vec![name_server])
 }
