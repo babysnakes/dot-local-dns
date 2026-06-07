@@ -4,6 +4,7 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 0
     ignore:
       # glib is only used on linux and I'm only building for windows
       - dependency-name: "glib"
